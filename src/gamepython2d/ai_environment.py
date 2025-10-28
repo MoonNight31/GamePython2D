@@ -260,35 +260,31 @@ class GameAIEnvironment(gym.Env):
             reward += projectiles_fired_this_step * 2.0  # 🚀 AUGMENTÉ de 0.5 à 2.0 !
             
             # 🎯 BONUS pour tirer vers les ennemis !
-            if hasattr(self, 'last_action') and self.enemy_spawner.enemies:
+            # On calcule AVANT la mise à jour du jeu pour avoir les ennemis vivants
+            if hasattr(self, 'last_action'):
                 move_x, move_y, attack_x, attack_y, should_attack = self.last_action
                 
-                # Trouver l'ennemi le plus proche
-                player_pos = self.player.rect.center
-                closest_enemy = min(self.enemy_spawner.enemies, 
-                                  key=lambda e: math.sqrt((e.rect.centerx - player_pos[0])**2 + 
-                                                        (e.rect.centery - player_pos[1])**2))
-                
-                # Direction vers l'ennemi le plus proche
-                enemy_dir_x = closest_enemy.rect.centerx - player_pos[0]
-                enemy_dir_y = closest_enemy.rect.centery - player_pos[1]
-                
-                # Normaliser les directions
-                enemy_length = math.sqrt(enemy_dir_x**2 + enemy_dir_y**2)
-                attack_length = math.sqrt(attack_x**2 + attack_y**2)
-                
-                if enemy_length > 0 and attack_length > 0:
-                    enemy_dir_x /= enemy_length
-                    enemy_dir_y /= enemy_length
-                    attack_x_norm = attack_x / attack_length
-                    attack_y_norm = attack_y / attack_length
+                # Utiliser les données d'observation pour les ennemis
+                enemies_data = self._get_closest_enemies_data(1)
+                if enemies_data[0] != 0 or enemies_data[1] != 0:  # Si ennemi détecté
+                    enemy_dir_x = enemies_data[0]  # Direction directement utilisable
+                    enemy_dir_y = enemies_data[1]
                     
-                    # Produit scalaire = mesure de similarité (-1 à +1)
-                    aim_accuracy = enemy_dir_x * attack_x_norm + enemy_dir_y * attack_y_norm
+                    # Normaliser la direction d'attaque si nécessaire
+                    attack_length = math.sqrt(attack_x**2 + attack_y**2)
                     
-                    # Bonus proportionnel à la précision (0 à +5)
-                    if aim_accuracy > 0.3:  # Seuil minimum pour le bonus
-                        reward += aim_accuracy * 5.0  # 🎯 GROS BONUS pour bien viser !
+                    if attack_length > 0:
+                        attack_x_norm = attack_x / attack_length
+                        attack_y_norm = attack_y / attack_length
+                        
+                        # Calculer la similarité des directions
+                        aim_accuracy = enemy_dir_x * attack_x_norm + enemy_dir_y * attack_y_norm
+                        
+                        # Bonus proportionnel à la précision (0 à +5)
+                        if aim_accuracy > 0.3:  # Seuil minimum
+                            aim_bonus = aim_accuracy * 5.0
+                            reward += aim_bonus
+                            print(f"🎯 Bonus visée: {aim_bonus:.2f} (précision: {aim_accuracy:.2f})")
             
             self.projectiles_fired += projectiles_fired_this_step
         self.last_projectile_count = current_projectile_count
@@ -388,7 +384,7 @@ class GameAIEnvironment(gym.Env):
     def _get_closest_enemies_data(self, count: int) -> list:
         """Obtient les données des ennemis les plus proches."""
         if not self.enemy_spawner.enemies:
-            return [-1, -1, 0, -1, -1]  # Aucun ennemi
+            return [0, 0, 0, 0, 0]  # Pas d'ennemi = direction nulle
         
         # Calculer les distances
         player_pos = self.player.rect.center

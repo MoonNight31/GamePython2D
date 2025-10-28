@@ -17,13 +17,22 @@ def test_aiming_system():
     env = GameAIEnvironment()
     env.reset()
     
-    # Attendre qu'un ennemi apparaisse
+    # Attendre qu'un ennemi apparaisse ou le forcer
     print("⏳ Attente d'apparition d'ennemis...")
-    for step in range(100):
+    for step in range(50):
         env.step(np.array([0.0, 0.0, 0.0, 0.0, 0.0]))  # Action neutre
         if len(env.enemy_spawner.enemies) > 0:
             print(f"✅ Ennemi trouvé au step {step}")
             break
+    
+    # Forcer l'apparition d'un ennemi si nécessaire
+    if not env.enemy_spawner.enemies:
+        print("🔧 Forcer l'apparition d'un ennemi...")
+        env.enemy_spawner.spawn_enemy(env.player.rect.center)
+        if env.enemy_spawner.enemies:
+            print("✅ Ennemi forcé créé avec succès")
+        else:
+            print("❌ Impossible de créer un ennemi !")
     
     if not env.enemy_spawner.enemies:
         print("❌ Aucun ennemi trouvé !")
