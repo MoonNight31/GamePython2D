@@ -241,127 +241,50 @@ class GameAIEnvironment(gym.Env):
                             # Pas de level up automatique pour l'IA (pour simplifier)
     
     def _calculate_reward(self) -> float:
-        """Calcule la récompense pour l'action courante."""
+        """SYSTÈME DE RÉCOMPENSES ULTRA-SIMPLIFIÉ - FOCUS COMBAT ACTIF."""
         reward = 0.0
         
-        # Récompense de base pour la survie (réduite)
-        reward += 0.05
+        # 🏆 RÉCOMPENSE PRINCIPALE : Kills actifs (objectif principal)
+        reward += self.enemies_killed_by_projectiles * 25.0  # ÉNORME récompense !
         
-        # Récompense forte pour les kills actifs (par projectiles)
-        reward += self.enemies_killed_by_projectiles * 15.0
-        
-        # Aucune récompense pour les kills passifs (collisions)
-        # Les kills par collision ne donnent pas de points
-        
-        # Système de récompenses ÉQUILIBRÉ pour tirs
+        # 🎯 TIR = TOUJOURS POSITIF (suppression de toute complexité)
         current_projectile_count = len([p for p in self.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - self.last_projectile_count)
         if projectiles_fired_this_step > 0:
-            
-            # 🎯 Récompense de base pour encourager le tir + bonus précision
-            base_shooting_reward = projectiles_fired_this_step * 1.0  # Récompense de base
-            reward += base_shooting_reward
-            
-            if hasattr(self, 'last_action'):
-                move_x, move_y, attack_x, attack_y, should_attack = self.last_action
-                
-                # Utiliser les données d'observation pour les ennemis
-                enemies_data = self._get_closest_enemies_data(1)
-                if enemies_data[0] != 0 or enemies_data[1] != 0:  # Si ennemi détecté
-                    enemy_dir_x = enemies_data[0]  # Direction directement utilisable
-                    enemy_dir_y = enemies_data[1]
-                    
-                    # Normaliser la direction d'attaque si nécessaire
-                    attack_length = math.sqrt(attack_x**2 + attack_y**2)
-                    
-                    if attack_length > 0:
-                        attack_x_norm = attack_x / attack_length
-                        attack_y_norm = attack_y / attack_length
-                        
-                        # Calculer la similarité des directions
-                        aim_accuracy = enemy_dir_x * attack_x_norm + enemy_dir_y * attack_y_norm
-                        
-                        # BONUS pour bonne visée (plus accessible)
-                        if aim_accuracy > 0.3:  # Seuil plus accessible
-                            aim_bonus = aim_accuracy * 5.0  # Bonus substantiel
-                            reward += aim_bonus
-                        # Petite pénalité pour mauvaise visée (pas trop sévère)
-                        elif aim_accuracy < 0:
-                            reward -= 0.5 * projectiles_fired_this_step
-                else:
-                    # Légère pénalité pour tirer dans le vide (encourager la patience)
-                    reward -= 0.3 * projectiles_fired_this_step
-            
+            reward += projectiles_fired_this_step * 4.0  # Récompense TRÈS généreuse
             self.projectiles_fired += projectiles_fired_this_step
         self.last_projectile_count = current_projectile_count
         
-        # Pénalité pour subir des dégâts
-        health_lost = self.last_player_health - self.player.health
-        if health_lost > 0:
-            reward -= health_lost * 1.0  # Pénalité augmentée
-            self.last_player_health = self.player.health
-        
-        # Récompense pour faire des dégâts avec projectiles
-        reward += self.total_damage_dealt * 0.02
-        
-        # Pénalité pour être proche des ennemis (encourage l'évitement)
-        closest_enemy_distance = self._get_closest_enemy_distance()
-        if closest_enemy_distance < 50:
-            reward -= 2.0  # Pénalité augmentée
-        elif closest_enemy_distance < 100:
-            reward -= 1.0
-        
-        # Bonus pour avoir beaucoup d'XP (seulement des kills actifs)
-        reward += self.xp_system.current_xp * 0.002
-        
-        # Récompenses pour déplacement intelligent
+        # 🏃 MOUVEMENT = TOUJOURS POSITIF
         if hasattr(self, 'last_action'):
             move_x, move_y, attack_x, attack_y, should_attack = self.last_action
             is_moving = abs(move_x) > 0.1 or abs(move_y) > 0.1
-            is_attacking = should_attack > 0.5
-            
-            # Bonus pour bouger (encourage l'activité)
             if is_moving:
-                reward += 0.2
-            
-            # Pénalité légère pour inactivité totale
-            if not is_moving and not is_attacking:
-                reward -= 0.3  # Réduit de -1 à -0.3
+                reward += 1.0  # Récompense généreuse pour bouger
         
-        # Système de position ÉQUILIBRÉ (moins punitif)
+        # 🛡️ SURVIE DE BASE
+        reward += 0.2  # Un peu augmenté
+        
+        # 🚨 SEULES PÉNALITÉS : DÉGÂTS ET COINS EXTRÊMES
+        # Pénalité pour dégâts
+        health_lost = self.last_player_health - self.player.health
+        if health_lost > 0:
+            reward -= health_lost * 3.0  # Pénalité forte pour encourager évitement
+            self.last_player_health = self.player.health
+        
+        # Pénalité UNIQUEMENT pour être collé aux murs (coins)
         player_x = self.player.rect.centerx
         player_y = self.player.rect.centery
+        if (player_x < 10 or player_x > self.screen_width - 10 or 
+            player_y < 10 or player_y > self.screen_height - 10):
+            reward -= 5.0  # Pénalité forte pour éviter les coins mortels
         
-        # Calculer la distance minimale aux bords
-        distance_to_left = player_x
-        distance_to_right = self.screen_width - player_x
-        distance_to_top = player_y
-        distance_to_bottom = self.screen_height - player_y
-        min_distance_to_edge = min(distance_to_left, distance_to_right, distance_to_top, distance_to_bottom)
-        
-        # Pénalités LÉGÈRES pour les bords (réduites)
-        if min_distance_to_edge < 30:  # Vraiment sur le bord
-            reward -= 0.3  # Réduit de -1.0 à -0.3
-        elif min_distance_to_edge < 60:  # Très proche
-            reward -= 0.1  # Réduit de -0.5 à -0.1
-        # Suppression de la pénalité à 150px - trop restrictive
-        
-        # Bonus modéré pour position centrale
-        center_x = self.screen_width / 2
-        center_y = self.screen_height / 2
-        distance_to_center = ((player_x - center_x) ** 2 + (player_y - center_y) ** 2) ** 0.5
-        max_distance_to_center = ((center_x) ** 2 + (center_y) ** 2) ** 0.5
-        center_ratio = 1.0 - (distance_to_center / max_distance_to_center)
-        
-        # Bonus réduit pour éviter conflit avec stratégie combat
-        reward += center_ratio * 0.1  # Réduit de 0.2 à 0.1
-        
-        # Grande pénalité pour mourir
+        # 💀 Pénalité mort
         if self.player.health <= 0:
-            reward -= 100.0
+            reward -= 30.0
         
         return reward
-    
+
     def _get_observation(self) -> np.ndarray:
         """Génère l'observation actuelle."""
         # Position et stats du joueur
