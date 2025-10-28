@@ -258,6 +258,38 @@ class GameAIEnvironment(gym.Env):
         projectiles_fired_this_step = max(0, current_projectile_count - self.last_projectile_count)
         if projectiles_fired_this_step > 0:
             reward += projectiles_fired_this_step * 2.0  # 🚀 AUGMENTÉ de 0.5 à 2.0 !
+            
+            # 🎯 BONUS pour tirer vers les ennemis !
+            if hasattr(self, 'last_action') and self.enemy_spawner.enemies:
+                move_x, move_y, attack_x, attack_y, should_attack = self.last_action
+                
+                # Trouver l'ennemi le plus proche
+                player_pos = self.player.rect.center
+                closest_enemy = min(self.enemy_spawner.enemies, 
+                                  key=lambda e: math.sqrt((e.rect.centerx - player_pos[0])**2 + 
+                                                        (e.rect.centery - player_pos[1])**2))
+                
+                # Direction vers l'ennemi le plus proche
+                enemy_dir_x = closest_enemy.rect.centerx - player_pos[0]
+                enemy_dir_y = closest_enemy.rect.centery - player_pos[1]
+                
+                # Normaliser les directions
+                enemy_length = math.sqrt(enemy_dir_x**2 + enemy_dir_y**2)
+                attack_length = math.sqrt(attack_x**2 + attack_y**2)
+                
+                if enemy_length > 0 and attack_length > 0:
+                    enemy_dir_x /= enemy_length
+                    enemy_dir_y /= enemy_length
+                    attack_x_norm = attack_x / attack_length
+                    attack_y_norm = attack_y / attack_length
+                    
+                    # Produit scalaire = mesure de similarité (-1 à +1)
+                    aim_accuracy = enemy_dir_x * attack_x_norm + enemy_dir_y * attack_y_norm
+                    
+                    # Bonus proportionnel à la précision (0 à +5)
+                    if aim_accuracy > 0.3:  # Seuil minimum pour le bonus
+                        reward += aim_accuracy * 5.0  # 🎯 GROS BONUS pour bien viser !
+            
             self.projectiles_fired += projectiles_fired_this_step
         self.last_projectile_count = current_projectile_count
         
@@ -376,13 +408,19 @@ class GameAIEnvironment(gym.Env):
         for i in range(count):
             if i < len(enemies_with_distance):
                 enemy, distance = enemies_with_distance[i]
-                # Position relative normalisée
-                rel_x = (enemy.rect.centerx - player_pos[0]) / self.screen_width
-                rel_y = (enemy.rect.centery - player_pos[1]) / self.screen_height
+                # Direction vers l'ennemi (directement utilisable pour l'action !)
+                direction_x = enemy.rect.centerx - player_pos[0]
+                direction_y = enemy.rect.centery - player_pos[1]
+                
+                # Normaliser la direction (-1 à +1)
+                max_distance = max(abs(direction_x), abs(direction_y), 1)
+                rel_x = direction_x / max_distance
+                rel_y = direction_y / max_distance
+                
                 health_norm = enemy.health / 100.0
                 result.extend([rel_x, rel_y, health_norm])
             else:
-                result.extend([-1, -1, 0])  # Pas d'ennemi
+                result.extend([0, 0, 0])  # Pas d'ennemi
         
         return result
     
