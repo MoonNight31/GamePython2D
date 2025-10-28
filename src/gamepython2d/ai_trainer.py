@@ -1,4 +1,5 @@
 import os
+import glob
 import numpy as np
 import torch
 from stable_baselines3 import PPO
@@ -76,26 +77,115 @@ class GameAITrainer:
         self.env = None
         self.callback = None
         
-    def create_environment(self, n_envs: int = 4, render_mode: str = None):
-        """Crée l'environnement d'entraînement."""
+    def create_environment(self, n_envs: int = 4, render_mode: str = None, use_subproc: bool = True):
+        """Crée l'environnement d'entraînement avec parallélisme optimisé."""
         def make_env():
             env = GameAIEnvironment(render_mode=render_mode)
             env = Monitor(env, filename=None)  # Pour logging automatique
             return env
         
+        print(f"🌍 Création de {n_envs} environnements parallèles...")
+        
         if n_envs == 1:
             self.env = DummyVecEnv([make_env])
+        elif use_subproc and n_envs > 4:
+            # SubprocVecEnv pour vrai parallélisme multi-processus
+            print("🚀 Utilisation de SubprocVecEnv pour parallélisme maximal")
+            self.env = SubprocVecEnv([make_env for _ in range(n_envs)])
         else:
-            # Environnements parallèles pour accélérer l'entraînement
+            # DummyVecEnv pour parallélisme léger
+            print("🔄 Utilisation de DummyVecEnv")
             self.env = DummyVecEnv([make_env for _ in range(n_envs)])
         
+        print(f"✅ {n_envs} environnements créés avec succès")
         return self.env
     
+    def find_latest_model(self):
+        """Trouve le dernier modèle sauvegardé."""
+        import glob
+        
+        # Chercher tous les modèles dans le dossier
+        model_patterns = [
+            f"{self.model_dir}/{self.model_name}_final.zip",
+            f"{self.model_dir}/best_{self.model_name}*.zip",
+            f"{self.model_dir}/{self.model_name}_*.zip"
+        ]
+        
+        latest_model = None
+        latest_time = 0
+        
+        for pattern in model_patterns:
+            files = glob.glob(pattern)
+            for file in files:
+                mtime = os.path.getmtime(file)
+                if mtime > latest_time:
+                    latest_time = mtime
+                    latest_model = file.replace('.zip', '')
+        
+        return latest_model
+    
+    def create_or_load_model(self, learning_rate: float = 3e-4, n_steps: int = 2048, 
+                            batch_size: int = 64, n_epochs: int = 10, device: str = 'auto'):
+        """Crée un nouveau modèle ou charge un modèle existant."""
+        if self.env is None:
+            raise ValueError("L'environnement doit être créé avant le modèle")
+        
+        # Chercher un modèle existant
+        existing_model = self.find_latest_model()
+        
+        if existing_model and os.path.exists(f"{existing_model}.zip"):
+            print(f"🔄 Modèle existant trouvé: {existing_model}.zip")
+            print(f"📂 Chargement du modèle pré-entraîné...")
+            try:
+                self.model = PPO.load(existing_model, env=self.env, device='cpu')
+                print(f"✅ Modèle chargé avec succès ! Reprise de l'entraînement.")
+                return self.model
+            except Exception as e:
+                print(f"⚠️ Erreur lors du chargement: {e}")
+                print(f"🔄 Création d'un nouveau modèle...")
+        else:
+            print(f"🆕 Aucun modèle existant trouvé. Création d'un nouveau modèle...")
+        
+        # Créer un nouveau modèle si pas de modèle existant ou erreur de chargement
+        return self.create_model(learning_rate, n_steps, batch_size, n_epochs, device)
+    
     def create_model(self, learning_rate: float = 3e-4, n_steps: int = 2048, 
-                    batch_size: int = 64, n_epochs: int = 10):
+                    batch_size: int = 64, n_epochs: int = 10, device: str = 'auto'):
         """Crée le modèle PPO."""
         if self.env is None:
             raise ValueError("L'environnement doit être créé avant le modèle")
+        
+        # Déterminer le device optimal
+        if device == 'auto':
+            device = 'cpu'
+            print(f"🤖 Device auto-sélectionné: {device} (optimal pour MlpPolicy)")
+        
+        # Optimiser les paramètres selon le nombre d'environnements
+        n_envs = getattr(self.env, 'num_envs', 1)
+        print(f"📊 Optimisation pour {n_envs} environnements...")
+        
+        # Ajuster batch_size selon n_envs pour utilisation optimale CPU + RAM
+        if n_envs >= 40:
+            batch_size = max(batch_size, 640)  # GIGANTESQUE batch pour 40+ envs
+            print(f"🚀 Batch size ajusté à {batch_size} pour {n_envs} envs (ULTRA PUISSANCE)")
+        elif n_envs >= 35:
+            batch_size = max(batch_size, 560)  # ÉNORME batch pour 35+ envs
+            print(f"🔥 Batch size ajusté à {batch_size} pour {n_envs} envs (LIMITE HAUTE)")
+        elif n_envs >= 32:
+            batch_size = max(batch_size, 512)  # ÉNORME batch pour 32+ envs
+            print(f"💥 Batch size ajusté à {batch_size} pour {n_envs} envs (MAXIMUM ABSOLU)")
+        elif n_envs >= 28:
+            batch_size = max(batch_size, 448)  # Très gros batch pour 28+ envs
+            print(f"🎯 Batch size ajusté à {batch_size} pour {n_envs} envs (SWEET SPOT)")
+        elif n_envs >= 24:
+            batch_size = max(batch_size, 384)  # Gros batch pour 24+ envs
+            print(f"🔥 Batch size ajusté à {batch_size} pour {n_envs} envs (EXTRÊME)")
+        elif n_envs >= 16:
+            batch_size = max(batch_size, 256)  # Batch très gros pour 16+ envs
+            print(f"🔧 Batch size ajusté à {batch_size} pour {n_envs} envs (MAXIMUM)")
+        elif n_envs >= 12:
+            batch_size = max(batch_size, 128)  # Batch plus gros pour 12+ envs
+            print(f"🔧 Batch size ajusté à {batch_size} pour {n_envs} envs")
         
         # Configuration du modèle PPO
         self.model = PPO(
@@ -112,9 +202,11 @@ class GameAITrainer:
             vf_coef=0.5,  # Coefficient de la value function
             max_grad_norm=0.5,  # Gradient clipping
             tensorboard_log=self.log_dir,
-            verbose=1
+            verbose=1,
+            device=device
         )
         
+        print(f"✅ Modèle PPO créé avec device={device}, batch_size={batch_size}")
         return self.model
     
     def train(self, total_timesteps: int = 100000, save_freq: int = 10000):
@@ -158,10 +250,19 @@ class GameAITrainer:
         training_time = time.time() - start_time
         print(f"✅ Entraînement terminé en {training_time:.2f} secondes")
         
-        # Sauvegarder le modèle final
-        model_path = f"{self.model_dir}/{self.model_name}_final"
+        # Sauvegarder le modèle final avec timesteps
+        # Calculer les timesteps totaux (existants + nouveaux)
+        current_timesteps = getattr(self.model, 'num_timesteps', 0)
+        total_trained_timesteps = current_timesteps
+        
+        model_path = f"{self.model_dir}/{self.model_name}_{total_trained_timesteps}_steps"
         self.model.save(model_path)
-        print(f"💾 Modèle final sauvegardé : {model_path}")
+        print(f"💾 Modèle sauvegardé avec {total_trained_timesteps:,} timesteps : {model_path}")
+        
+        # Aussi sauvegarder comme "final" pour compatibilité
+        final_path = f"{self.model_dir}/{self.model_name}_final"
+        self.model.save(final_path)
+        print(f"💾 Copie finale sauvegardée : {final_path}")
         
         return self.model
     
@@ -173,7 +274,7 @@ class GameAITrainer:
         if not os.path.exists(f"{model_path}.zip"):
             raise FileNotFoundError(f"Modèle non trouvé : {model_path}.zip")
         
-        self.model = PPO.load(model_path, env=self.env)
+        self.model = PPO.load(model_path, env=self.env, device='cpu')
         print(f"📂 Modèle chargé : {model_path}")
         return self.model
     
