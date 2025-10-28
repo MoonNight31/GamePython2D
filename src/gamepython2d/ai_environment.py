@@ -257,7 +257,7 @@ class GameAIEnvironment(gym.Env):
         current_projectile_count = len([p for p in self.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - self.last_projectile_count)
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 0.5
+            reward += projectiles_fired_this_step * 2.0  # 🚀 AUGMENTÉ de 0.5 à 2.0 !
             self.projectiles_fired += projectiles_fired_this_step
         self.last_projectile_count = current_projectile_count
         
