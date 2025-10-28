@@ -82,12 +82,6 @@ def train_ai():
         print("✅ Modèle entraîné avec succès!")
         print("🎯 Utilisez demo_ai.py pour tester votre IA en action!")
         
-        print(f"🚀 Projectiles tirés: {projectiles_fired}")
-        if projectiles_fired > 0:
-            print("✅ SUCCÈS: IA active créée!")
-        else:
-            print("⚠️ IA encore passive, plus d'entraînement nécessaire")
-        
         trainer.close()
         
     except Exception as e:
