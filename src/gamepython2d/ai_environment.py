@@ -314,15 +314,21 @@ class GameAIEnvironment(gym.Env):
         # Bonus pour avoir beaucoup d'XP (seulement des kills actifs)
         reward += self.xp_system.current_xp * 0.002
         
-        # Pénalité pour inactivité (pas de mouvement ni d'attaque)
+        # Récompenses pour déplacement intelligent
         if hasattr(self, 'last_action'):
             move_x, move_y, attack_x, attack_y, should_attack = self.last_action
             is_moving = abs(move_x) > 0.1 or abs(move_y) > 0.1
             is_attacking = should_attack > 0.5
+            
+            # Bonus pour bouger (encourage l'activité)
+            if is_moving:
+                reward += 0.2
+            
+            # Pénalité légère pour inactivité totale
             if not is_moving and not is_attacking:
-                reward -= 1  # Pénalité pour inactivité
+                reward -= 0.3  # Réduit de -1 à -0.3
         
-        # Récompenses/Pénalités pour la position par rapport aux bords
+        # Système de position ÉQUILIBRÉ (moins punitif)
         player_x = self.player.rect.centerx
         player_y = self.player.rect.centery
         
@@ -333,26 +339,22 @@ class GameAIEnvironment(gym.Env):
         distance_to_bottom = self.screen_height - player_y
         min_distance_to_edge = min(distance_to_left, distance_to_right, distance_to_top, distance_to_bottom)
         
-        # Pénalités pour être trop proche des bords
-        if min_distance_to_edge < 50:  # Très proche des bords
-            reward -= 1.0
-        elif min_distance_to_edge < 100:  # Proche des bords
-            reward -= 0.5
-        elif min_distance_to_edge < 150:  # Un peu proche
-            reward -= 0.2
-        else:
-            # Bonus pour rester au centre (distance > 150 pixels des bords)
-            reward += 0.3
+        # Pénalités LÉGÈRES pour les bords (réduites)
+        if min_distance_to_edge < 30:  # Vraiment sur le bord
+            reward -= 0.3  # Réduit de -1.0 à -0.3
+        elif min_distance_to_edge < 60:  # Très proche
+            reward -= 0.1  # Réduit de -0.5 à -0.1
+        # Suppression de la pénalité à 150px - trop restrictive
         
-        # Bonus supplémentaire pour être vraiment au centre
+        # Bonus modéré pour position centrale
         center_x = self.screen_width / 2
         center_y = self.screen_height / 2
         distance_to_center = ((player_x - center_x) ** 2 + (player_y - center_y) ** 2) ** 0.5
         max_distance_to_center = ((center_x) ** 2 + (center_y) ** 2) ** 0.5
         center_ratio = 1.0 - (distance_to_center / max_distance_to_center)
         
-        # Bonus progressif pour être au centre (0.0 à 0.2 points)
-        reward += center_ratio * 0.2
+        # Bonus réduit pour éviter conflit avec stratégie combat
+        reward += center_ratio * 0.1  # Réduit de 0.2 à 0.1
         
         # Grande pénalité pour mourir
         if self.player.health <= 0:
