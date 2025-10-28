@@ -39,7 +39,7 @@ class Player:
         self.max_health = 100
         self.health = self.max_health
         self.attack_damage = 25
-        self.attack_speed = 1.0  # attaques par seconde
+        self.attack_speed = 10.0  # 10 attaques par seconde pour l'IA !
         
         # État du joueur
         self.last_attack_time = 0

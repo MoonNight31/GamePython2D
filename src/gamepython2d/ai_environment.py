@@ -151,7 +151,7 @@ class GameAIEnvironment(gym.Env):
         return observation, reward, terminated, truncated, info
     
     def _process_action(self, action: np.ndarray):
-        """Traite l'action de l'IA."""
+        """Traite l'action de l'IA (array de 5 valeurs)."""
         move_x, move_y, attack_x, attack_y, should_attack = action
         
         # Sauvegarder l'action pour le calcul de récompense
