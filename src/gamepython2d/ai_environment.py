@@ -284,7 +284,7 @@ class GameAIEnvironment(gym.Env):
                         if aim_accuracy > 0.3:  # Seuil minimum
                             aim_bonus = aim_accuracy * 5.0
                             reward += aim_bonus
-                            print(f"🎯 Bonus visée: {aim_bonus:.2f} (précision: {aim_accuracy:.2f})")
+                            # print supprimé pour éviter le spam pendant l'entraînement
             
             self.projectiles_fired += projectiles_fired_this_step
         self.last_projectile_count = current_projectile_count
