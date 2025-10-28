@@ -36,9 +36,9 @@ def train_ai():
         )
         
         # Entraînement
-        total_timesteps = 100000  # 50k steps = ~5 minutes
+        total_timesteps = 3000000  # 3M steps = ~45 minutes
         print(f"🎓 Entraînement: {total_timesteps:,} timesteps")
-        print("⏱️ Durée estimée: 5-10 minutes")
+        print("⏱️ Durée estimée: 45-60 minutes")
 
         start_time = time.time()
         model = trainer.train(total_timesteps=total_timesteps, save_freq=100000)
