@@ -56,7 +56,7 @@ def train_ai():
         )
         
         # Entraînement (continuera automatiquement si modèle existant)
-        total_timesteps = 2000000  # 2M steps total
+        total_timesteps = 10000000  # 10M steps total
         print(f"🎓 Entraînement: {total_timesteps:,} timesteps")
         
         # Vérifier si c'est une reprise
