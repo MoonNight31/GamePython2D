@@ -286,7 +286,7 @@ class GameAIEnvironment(gym.Env):
             is_moving = abs(move_x) > 0.1 or abs(move_y) > 0.1
             is_attacking = should_attack > 0.5
             if not is_moving and not is_attacking:
-                reward -= 0.1  # Pénalité pour inactivité
+                reward -= 1  # Pénalité pour inactivité
         
         # Récompenses/Pénalités pour la position par rapport aux bords
         player_x = self.player.rect.centerx
