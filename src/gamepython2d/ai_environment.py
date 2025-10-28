@@ -253,14 +253,15 @@ class GameAIEnvironment(gym.Env):
         # Aucune récompense pour les kills passifs (collisions)
         # Les kills par collision ne donnent pas de points
         
-        # Récompense pour tirer des projectiles (encourage l'action)
+        # Système de récompenses ÉQUILIBRÉ pour tirs
         current_projectile_count = len([p for p in self.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - self.last_projectile_count)
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 2.0  # 🚀 AUGMENTÉ de 0.5 à 2.0 !
             
-            # 🎯 BONUS pour tirer vers les ennemis !
-            # On calcule AVANT la mise à jour du jeu pour avoir les ennemis vivants
+            # 🎯 Récompense de base pour encourager le tir + bonus précision
+            base_shooting_reward = projectiles_fired_this_step * 1.0  # Récompense de base
+            reward += base_shooting_reward
+            
             if hasattr(self, 'last_action'):
                 move_x, move_y, attack_x, attack_y, should_attack = self.last_action
                 
@@ -280,11 +281,16 @@ class GameAIEnvironment(gym.Env):
                         # Calculer la similarité des directions
                         aim_accuracy = enemy_dir_x * attack_x_norm + enemy_dir_y * attack_y_norm
                         
-                        # Bonus proportionnel à la précision (0 à +5)
-                        if aim_accuracy > 0.3:  # Seuil minimum
-                            aim_bonus = aim_accuracy * 5.0
+                        # BONUS pour bonne visée (plus accessible)
+                        if aim_accuracy > 0.3:  # Seuil plus accessible
+                            aim_bonus = aim_accuracy * 5.0  # Bonus substantiel
                             reward += aim_bonus
-                            # print supprimé pour éviter le spam pendant l'entraînement
+                        # Petite pénalité pour mauvaise visée (pas trop sévère)
+                        elif aim_accuracy < 0:
+                            reward -= 0.5 * projectiles_fired_this_step
+                else:
+                    # Légère pénalité pour tirer dans le vide (encourager la patience)
+                    reward -= 0.3 * projectiles_fired_this_step
             
             self.projectiles_fired += projectiles_fired_this_step
         self.last_projectile_count = current_projectile_count

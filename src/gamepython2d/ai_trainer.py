@@ -77,8 +77,8 @@ class GameAITrainer:
         self.env = None
         self.callback = None
         
-    def create_environment(self, n_envs: int = 4, render_mode: str = None, use_subproc: bool = True):
-        """Crée l'environnement d'entraînement avec parallélisme optimisé."""
+    def create_environment(self, n_envs: int = 4, render_mode: str = None, use_subproc: bool = False):
+        """Crée l'environnement d'entraînement avec DummyVecEnv pour éviter les problèmes multiprocessing."""
         def make_env():
             env = GameAIEnvironment(render_mode=render_mode)
             env = Monitor(env, filename=None)  # Pour logging automatique
@@ -86,16 +86,9 @@ class GameAITrainer:
         
         print(f"🌍 Création de {n_envs} environnements parallèles...")
         
-        if n_envs == 1:
-            self.env = DummyVecEnv([make_env])
-        elif use_subproc and n_envs > 4:
-            # SubprocVecEnv pour vrai parallélisme multi-processus
-            print("🚀 Utilisation de SubprocVecEnv pour parallélisme maximal")
-            self.env = SubprocVecEnv([make_env for _ in range(n_envs)])
-        else:
-            # DummyVecEnv pour parallélisme léger
-            print("🔄 Utilisation de DummyVecEnv")
-            self.env = DummyVecEnv([make_env for _ in range(n_envs)])
+        # Utiliser DummyVecEnv pour éviter les problèmes multiprocessing sur Windows
+        print("� Utilisation de DummyVecEnv (compatible Windows)")
+        self.env = DummyVecEnv([make_env for _ in range(n_envs)])
         
         print(f"✅ {n_envs} environnements créés avec succès")
         return self.env

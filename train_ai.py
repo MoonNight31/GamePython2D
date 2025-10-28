@@ -4,6 +4,9 @@ Script principal d'entraînement IA - Version finale
 Entraîne une IA active qui utilise les projectiles
 """
 
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module="pygame")
+
 import sys
 import os
 import time
@@ -56,7 +59,7 @@ def train_ai():
         )
         
         # Entraînement (continuera automatiquement si modèle existant)
-        total_timesteps = 10000000  # 10M steps total
+        total_timesteps = 2000000  # 10M steps total
         print(f"🎓 Entraînement: {total_timesteps:,} timesteps")
         
         # Vérifier si c'est une reprise
