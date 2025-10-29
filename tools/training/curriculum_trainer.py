@@ -392,64 +392,104 @@ class CurriculumLearningTrainer:
         return reward
     
     def _stage5_reward(self, env) -> float:
-        """💎 ÉTAPE 5: Récompenses focalisées sur la COLLECTE D'ORBES D'XP."""
+        """💎 ÉTAPE 5: Récompenses AMÉLIORÉES pour COLLECTE D'ORBES D'XP."""
         reward = 0.0
         
+        # ═══════════════════════════════════════════════════════
         # OBJECTIF PRINCIPAL : COLLECTER LES ORBES D'XP
-        # Compter les orbes collectés dans ce step
-        if not hasattr(env, 'last_xp_count'):
+        # ═══════════════════════════════════════════════════════
+        
+        # 1. RÉCOMPENSE MASSIVE POUR COLLECTE
+        xp_gained = env.xp_system.current_xp - getattr(env, 'last_xp_count', env.xp_system.current_xp)
+        if xp_gained > 0:
+            reward += xp_gained * 5.0  # 🔥 Augmenté de 2.0 à 5.0 (250% plus!)
+            
+            # BONUS COMBO : Collecter plusieurs orbes dans un court laps de temps
+            if not hasattr(env, 'orb_collection_streak'):
+                env.orb_collection_streak = 0
+                env.last_collection_time = 0
+            
+            # Si collecte rapide (< 100 steps depuis dernière)
+            if (env.step_count - env.last_collection_time) < 100:
+                env.orb_collection_streak += 1
+                reward += env.orb_collection_streak * 10.0  # 🔥 COMBO MULTIPLIER!
+            else:
+                env.orb_collection_streak = 1
+            
+            env.last_collection_time = env.step_count
             env.last_xp_count = env.xp_system.current_xp
         
-        xp_gained = env.xp_system.current_xp - env.last_xp_count
-        if xp_gained > 0:
-            reward += xp_gained * 2.0  # ÉNORME récompense pour collecter XP
-        env.last_xp_count = env.xp_system.current_xp
-        
-        # Récompenser le fait de se diriger vers les orbes
-        if len(env.xp_orbs) > 0 and hasattr(env, 'last_action'):
-            # Trouver l'orbe le plus proche
+        # 2. RÉCOMPENSE POUR PROXIMITÉ AUX ORBES
+        if len(env.xp_orbs) > 0:
             player_pos = (env.player.rect.centerx, env.player.rect.centery)
+            
+            # Trouver l'orbe le plus proche
             closest_orb = min(env.xp_orbs,
-                            key=lambda orb: ((orb.x - player_pos[0])**2 + 
-                                           (orb.y - player_pos[1])**2)**0.5)
+                             key=lambda orb: ((orb.x - player_pos[0])**2 + 
+                                            (orb.y - player_pos[1])**2)**0.5)
             
-            # Direction vers l'orbe
-            dx = closest_orb.x - player_pos[0]
-            dy = closest_orb.y - player_pos[1]
-            length = (dx**2 + dy**2)**0.5
+            distance = ((closest_orb.x - player_pos[0])**2 + 
+                       (closest_orb.y - player_pos[1])**2)**0.5
             
-            if length > 0:
-                dx /= length
-                dy /= length
+            # 🔥 BONUS DE PROXIMITÉ (plus proche = meilleur)
+            if distance < 150:  # Rayon d'attraction magnétique
+                proximity_bonus = (150 - distance) / 150 * 5.0
+                reward += proximity_bonus  # Max +5 si très proche
+            
+            # 3. RÉCOMPENSE POUR SE DIRIGER VERS L'ORBE
+            if hasattr(env, 'last_action') and distance > 10:
+                # Direction vers l'orbe
+                dx = closest_orb.x - player_pos[0]
+                dy = closest_orb.y - player_pos[1]
+                length = (dx**2 + dy**2)**0.5
                 
-                # Mouvement vers l'orbe
-                move_x, move_y, _, _, _ = env.last_action
-                dot_product = dx * move_x + dy * move_y
-                
-                if dot_product > 0.3:
-                    reward += dot_product * 3.0  # Bonus pour aller vers l'orbe
+                if length > 0:
+                    dx /= length
+                    dy /= length
+                    
+                    # Mouvement vers l'orbe
+                    move_x, move_y, _, _, _ = env.last_action
+                    dot_product = dx * move_x + dy * move_y
+                    
+                    if dot_product > 0.2:  # Plus tolérant (était 0.3)
+                        reward += dot_product * 8.0  # 🔥 Augmenté de 3.0 à 8.0
+            
+            # 4. BONUS POUR NOMBRE D'ORBES DISPONIBLES
+            # Plus il y a d'orbes, plus l'IA doit être motivée à les collecter
+            num_orbs = len(env.xp_orbs)
+            if num_orbs >= 3:
+                reward += num_orbs * 0.5  # Incitation à aller nettoyer le terrain
         
-        # Garder tous les acquis précédents (mais avec moins de poids)
-        reward += env.enemies_killed_by_projectiles * 10.0
+        # ═══════════════════════════════════════════════════════
+        # GARDER LES ACQUIS (mais avec moins de poids)
+        # ═══════════════════════════════════════════════════════
         
+        # Kills (important car créent des orbes!)
+        reward += env.enemies_killed_by_projectiles * 15.0  # Augmenté de 10 à 15
+        
+        # Tir (garder le comportement)
         current_projectile_count = len([p for p in env.player.projectiles if p.active])
-        projectiles_fired_this_step = max(0, current_projectile_count - env.last_projectile_count)
+        projectiles_fired_this_step = max(0, current_projectile_count - getattr(env, 'last_projectile_count', 0))
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 0.5
+            reward += projectiles_fired_this_step * 0.8  # Augmenté de 0.5
         env.last_projectile_count = current_projectile_count
         
         # Survie
-        reward += 0.3
+        reward += 0.4  # Augmenté de 0.3
         
-        # Pénalité dégâts
-        health_lost = env.last_player_health - env.player.health
+        # ═══════════════════════════════════════════════════════
+        # PÉNALITÉS AJUSTÉES
+        # ═══════════════════════════════════════════════════════
+        
+        # Pénalité dégâts RÉDUITE (collecter = risque acceptable)
+        health_lost = getattr(env, 'last_player_health', env.player.health) - env.player.health
         if health_lost > 0:
-            reward -= health_lost * 3.0
+            reward -= health_lost * 2.0  # RÉDUIT de 3.0 à 2.0 (risque acceptable)
             env.last_player_health = env.player.health
         
-        # Pénalité mort
+        # Pénalité mort RÉDUITE (encourager prise de risque calculée)
         if env.player.health <= 0:
-            reward -= 80.0
+            reward -= 60.0  # RÉDUIT de -80 à -60
             
         return reward
     
