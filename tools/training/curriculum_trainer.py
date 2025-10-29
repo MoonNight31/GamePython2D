@@ -43,6 +43,20 @@ class CurriculumLearningTrainer:
             7: {"survival_time": 2000, "kills": 5.0, "episodes_to_check": 5}
         }
         
+        # Timesteps progressifs par étape (augmentés pour meilleur apprentissage)
+        self.stage_timesteps = {
+            1: 150000,   # Étape 1 : Tir de base (150k)
+            2: 200000,   # Étape 2 : Visée (200k - plus complexe)
+            3: 250000,   # Étape 3 : Mouvement (250k)
+            4: 300000,   # Étape 4 : Survie (300k)
+            5: 350000,   # Étape 5 : Collecte XP (350k - nouveau comportement)
+            6: 300000,   # Étape 6 : Cartes (300k)
+            7: 500000,   # Étape 7 : Maîtrise complète (500k - le plus important!)
+        }
+        
+        # Nombre de tentatives maximum par étape
+        self.max_retries = 2
+        
         self.stage_history = []
         
     def create_stage_environment(self, stage: int) -> GameAIEnvironment:
@@ -54,8 +68,12 @@ class CurriculumLearningTrainer:
         
         return env
     
-    def train_stage(self, stage: int, total_timesteps: int = 50000):
+    def train_stage(self, stage: int, total_timesteps: int = None):
         """Entraîne l'IA pour une étape spécifique."""
+        # Utiliser les timesteps par défaut si non spécifié
+        if total_timesteps is None:
+            total_timesteps = self.stage_timesteps.get(stage, 100000)
+        
         print(f"\n{'='*60}")
         print(f"{self.stages[stage]}")
         print(f"{'='*60}")
@@ -81,7 +99,7 @@ class CurriculumLearningTrainer:
         self.trainer.train(total_timesteps=total_timesteps, save_freq=10000)
         
         training_time = time.time() - start_time
-        print(f"✅ Entraînement terminé en {training_time:.1f}s")
+        print(f"✅ Entraînement terminé en {training_time:.1f}s ({training_time/60:.1f} minutes)")
         
         # Le modèle est automatiquement sauvegardé par train()
         # Créer une copie spécifique à l'étape si nécessaire
@@ -91,7 +109,44 @@ class CurriculumLearningTrainer:
             print(f"💾 Modèle étape {stage} sauvegardé : {stage_path}")
         
         # Évaluer les performances
-        self._evaluate_stage(stage)
+        return self._evaluate_stage(stage)
+    
+    def train_stage_with_validation(self, stage: int):
+        """Entraîne une étape avec validation stricte et retry si échec."""
+        print(f"\n{'='*70}")
+        print(f"🎓 ENTRAÎNEMENT AVEC VALIDATION - {self.stages[stage]}")
+        print(f"{'='*70}")
+        print(f"📊 Timesteps prévus: {self.stage_timesteps[stage]:,}")
+        print(f"🔄 Tentatives maximum: {self.max_retries}")
+        print(f"{'='*70}\n")
+        
+        for attempt in range(1, self.max_retries + 1):
+            print(f"\n{'🔥'*30}")
+            print(f"🔄 TENTATIVE {attempt}/{self.max_retries} - Étape {stage}")
+            print(f"{'🔥'*30}\n")
+            
+            # Entraîner l'étape
+            ready = self.train_stage(stage)
+            
+            if ready:
+                print(f"\n{'✅'*30}")
+                print(f"✅ ÉTAPE {stage} VALIDÉE avec succès !")
+                print(f"{'✅'*30}\n")
+                return True
+            else:
+                if attempt < self.max_retries:
+                    print(f"\n{'⚠️'*30}")
+                    print(f"⚠️ Étape {stage} NON VALIDÉE - Ré-entraînement avec 50% de timesteps supplémentaires...")
+                    print(f"{'⚠️'*30}\n")
+                    # Augmenter les timesteps de 50% pour la prochaine tentative
+                    self.stage_timesteps[stage] = int(self.stage_timesteps[stage] * 1.5)
+                else:
+                    print(f"\n{'❌'*30}")
+                    print(f"❌ ATTENTION: Étape {stage} NON VALIDÉE après {self.max_retries} tentatives")
+                    print(f"❌ Passage forcé à l'étape suivante...")
+                    print(f"{'❌'*30}\n")
+        
+        return False
         
     def _patch_reward_system(self, stage: int):
         """Modifie le système de récompenses selon l'étape."""
@@ -203,15 +258,15 @@ class CurriculumLearningTrainer:
                 if should_attack > 0.5 and dot_product > 0.3:
                     reward += 12.0  # JACKPOT pour tir bien visé
         
-        # Garder l'acquis de l'étape 1 (tirer)
+        # Garder l'acquis de l'étape 1 (tirer) - AUGMENTÉ
         current_projectile_count = len([p for p in env.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - env.last_projectile_count)
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 3.0
+            reward += projectiles_fired_this_step * 5.0  # 🔥 Augmenté de 3.0 à 5.0
         env.last_projectile_count = current_projectile_count
         
-        # Bonus pour kills (preuve de bonne visée)
-        reward += env.enemies_killed_by_projectiles * 20.0
+        # Bonus pour kills (preuve de bonne visée) - AUGMENTÉ
+        reward += env.enemies_killed_by_projectiles * 30.0  # 🔥 Augmenté de 20.0 à 30.0
         
         # Survie minimale
         reward += 0.1
@@ -254,12 +309,15 @@ class CurriculumLearningTrainer:
                         if dot_product > 0:
                             reward += dot_product * 2.0
         
-        # Garder les acquis précédents (tir et visée)
+        # Garder les acquis précédents (tir et visée) - AUGMENTÉ
         current_projectile_count = len([p for p in env.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - env.last_projectile_count)
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 2.0
+            reward += projectiles_fired_this_step * 4.0  # 🔥 Augmenté de 2.0 à 4.0
         env.last_projectile_count = current_projectile_count
+        
+        # Bonus pour kills - AJOUTÉ
+        reward += env.enemies_killed_by_projectiles * 20.0  # 🔥 Nouveau bonus
         
         # Éviter les bords
         player_x = env.player.rect.centerx
@@ -361,10 +419,11 @@ class CurriculumLearningTrainer:
             if is_moving:
                 reward += 1.0
         
+        # TIR MAINTENU - AUGMENTÉ
         current_projectile_count = len([p for p in env.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - env.last_projectile_count)
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 1.0
+            reward += projectiles_fired_this_step * 3.0  # 🔥 Augmenté de 1.0 à 3.0
         env.last_projectile_count = current_projectile_count
         
         # Gestion des dégâts (critique pour survie)
@@ -464,14 +523,14 @@ class CurriculumLearningTrainer:
         # GARDER LES ACQUIS (mais avec moins de poids)
         # ═══════════════════════════════════════════════════════
         
-        # Kills (important car créent des orbes!)
-        reward += env.enemies_killed_by_projectiles * 15.0  # Augmenté de 10 à 15
+        # Kills (important car créent des orbes!) - AUGMENTÉ
+        reward += env.enemies_killed_by_projectiles * 25.0  # 🔥 Augmenté de 15 à 25
         
-        # Tir (garder le comportement)
+        # Tir (garder le comportement) - AUGMENTÉ
         current_projectile_count = len([p for p in env.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - getattr(env, 'last_projectile_count', 0))
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 0.8  # Augmenté de 0.5
+            reward += projectiles_fired_this_step * 2.0  # 🔥 Augmenté de 0.8 à 2.0
         env.last_projectile_count = current_projectile_count
         
         # Survie
@@ -519,13 +578,14 @@ class CurriculumLearningTrainer:
             reward += xp_gained * 1.5
         env.last_xp_count = env.xp_system.current_xp
         
-        # Garder tous les acquis
-        reward += env.enemies_killed_by_projectiles * 12.0
+        # Garder tous les acquis - AUGMENTÉ
+        reward += env.enemies_killed_by_projectiles * 20.0  # 🔥 Augmenté de 12.0 à 20.0
         
+        # TIR MAINTENU - AUGMENTÉ
         current_projectile_count = len([p for p in env.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - env.last_projectile_count)
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 0.8
+            reward += projectiles_fired_this_step * 2.0  # 🔥 Augmenté de 0.8 à 2.0
         env.last_projectile_count = current_projectile_count
         
         # Survie
@@ -552,8 +612,8 @@ class CurriculumLearningTrainer:
         # Survie longue durée
         reward += 0.6
         
-        # Kills avec bonus croissant
-        reward += env.enemies_killed_by_projectiles * 20.0
+        # Kills avec bonus croissant - AUGMENTÉ
+        reward += env.enemies_killed_by_projectiles * 30.0  # 🔥 Augmenté de 20.0 à 30.0
         
         # Bonus pour niveau élevé (preuve d'améliorations)
         current_level = env.xp_system.level
@@ -566,11 +626,11 @@ class CurriculumLearningTrainer:
             reward += xp_gained * 1.0
         env.last_xp_count = env.xp_system.current_xp
         
-        # Maintien des compétences de base
+        # Maintien des compétences de base - AUGMENTÉ
         current_projectile_count = len([p for p in env.player.projectiles if p.active])
         projectiles_fired_this_step = max(0, current_projectile_count - env.last_projectile_count)
         if projectiles_fired_this_step > 0:
-            reward += projectiles_fired_this_step * 1.5
+            reward += projectiles_fired_this_step * 3.0  # 🔥 Augmenté de 1.5 à 3.0
         env.last_projectile_count = current_projectile_count
         
         # Mouvement tactique
@@ -756,17 +816,46 @@ class CurriculumLearningTrainer:
         return ready_for_next
     
     def run_full_curriculum(self):
-        """Lance l'apprentissage complet par curriculum."""
+        """Lance l'apprentissage complet par curriculum avec validation stricte."""
+        print("\n" + "="*70)
         print("🎓 DÉMARRAGE DU CURRICULUM LEARNING - 7 ÉTAPES")
-        print("="*60)
+        print("="*70)
+        print(f"\n📊 Configuration:")
+        print(f"  • Étape 1 (Tir):      {self.stage_timesteps[1]:,} timesteps")
+        print(f"  • Étape 2 (Visée):    {self.stage_timesteps[2]:,} timesteps")
+        print(f"  • Étape 3 (Mouvement): {self.stage_timesteps[3]:,} timesteps")
+        print(f"  • Étape 4 (Survie):   {self.stage_timesteps[4]:,} timesteps")
+        print(f"  • Étape 5 (XP):       {self.stage_timesteps[5]:,} timesteps")
+        print(f"  • Étape 6 (Cartes):   {self.stage_timesteps[6]:,} timesteps")
+        print(f"  • Étape 7 (Maîtrise): {self.stage_timesteps[7]:,} timesteps")
+        total_timesteps = sum(self.stage_timesteps.values())
+        print(f"\n  📈 TOTAL: ~{total_timesteps:,} timesteps (~{total_timesteps/1000000:.1f}M)")
+        estimated_time = total_timesteps / 7000 / 60  # Estimation: 7000 FPS, conversion en minutes
+        print(f"  ⏱️ Temps estimé: ~{estimated_time:.0f} minutes ({estimated_time/60:.1f}h)")
+        print("="*70 + "\n")
+        
+        start_total = time.time()
+        successful_stages = 0
         
         for stage in [1, 2, 3, 4, 5, 6, 7]:
-            self.train_stage(stage, total_timesteps=100000)
+            success = self.train_stage_with_validation(stage)
+            if success:
+                successful_stages += 1
             
-            print(f"\n{'='*60}")
-            
+            print(f"\n{'='*70}")
+            print(f"📊 PROGRESSION: {successful_stages}/{stage} étapes validées")
+            print(f"{'='*70}\n")
+        
+        total_time = time.time() - start_total
+        
+        print("\n" + "🎉"*35)
         print("🎉 CURRICULUM LEARNING TERMINÉ !")
-        print("Le modèle final est disponible dans ai_models/curriculum_stage_7")
+        print("🎉"*35)
+        print(f"\n📊 STATISTIQUES FINALES:")
+        print(f"  ✅ Étapes validées: {successful_stages}/7")
+        print(f"  ⏱️ Temps total: {total_time/60:.1f} minutes ({total_time/3600:.2f}h)")
+        print(f"  💾 Modèle final: ai_models/curriculum_stage_7")
+        print("\n" + "="*70 + "\n")
 
 def main():
     """Point d'entrée principal."""
