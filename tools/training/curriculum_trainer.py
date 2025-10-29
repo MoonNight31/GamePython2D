@@ -79,7 +79,7 @@ class CurriculumLearningTrainer:
         print(f"{'='*60}")
         
         # Configurer l'entraîneur
-        self.trainer.create_environment(n_envs=4)
+        self.trainer.create_environment(n_envs=30)
         
         # Si c'est la première étape ou on n'a pas de modèle, créer nouveau
         if stage == 1 or not hasattr(self.trainer, 'model') or self.trainer.model is None:

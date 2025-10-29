@@ -222,12 +222,13 @@ class GameAIEnvironment(gym.Env):
         # Mettre à jour les ennemis
         self.enemy_spawner.update(dt, self.player.rect.center)
         
-        # Mettre à jour les orbes d'XP
+        # Mettre à jour et collecter les orbes d'XP
         player_pos = (self.player.rect.centerx, self.player.rect.centery)
-        self.xp_orbs = [orb for orb in self.xp_orbs if orb.update(dt, player_pos)]
         
-        # Collecter les orbes d'XP
+        # D'abord vérifier la collecte AVANT de filtrer
         for orb in self.xp_orbs[:]:  # Copie de la liste pour itération sûre
+            still_active = orb.update(dt, player_pos)
+            
             if orb.collected:
                 # Donner l'XP au joueur
                 xp_gained = self.xp_system.gain_xp(orb.xp_value)
@@ -237,6 +238,9 @@ class GameAIEnvironment(gym.Env):
                     self._auto_select_card()
                 
                 # Retirer l'orbe de la liste
+                self.xp_orbs.remove(orb)
+            elif not still_active:
+                # L'orbe a expiré, le retirer
                 self.xp_orbs.remove(orb)
         
         # Détecter les collisions
