@@ -11,6 +11,10 @@ class Enemy:
         self.rect = pygame.Rect(x, y, 20, 20)
         self.enemy_type = enemy_type
         
+        # Position flottante pour mouvement précis
+        self.x_float = float(x)
+        self.y_float = float(y)
+        
         # Statistiques selon le type
         if enemy_type == "basic":
             self.max_health = 30
@@ -50,9 +54,13 @@ class Enemy:
             direction = direction.normalize()
             self.velocity = direction * self.speed
             
-            # Application du mouvement
-            self.rect.x += self.velocity.x * dt / 1000
-            self.rect.y += self.velocity.y * dt / 1000
+            # Application du mouvement avec position flottante
+            self.x_float += self.velocity.x * dt / 1000
+            self.y_float += self.velocity.y * dt / 1000
+            
+            # Mise à jour du rect avec les positions entières
+            self.rect.x = int(self.x_float)
+            self.rect.y = int(self.y_float)
         
         # Réduction du flash de dégâts
         if self.damage_flash_time > 0:
