@@ -1,11 +1,14 @@
 import pygame
 import sys
+import random
 from typing import List, Optional
 from .player import Player
 from .enemy import EnemySpawner
 from .xp_system import XPSystem
 from .card_system import CardDraft
 from .ui import GameUI
+from .effects_system import EffectsSystem
+from .audio_system import AudioSystem
 
 class Game:
     """Classe principale du jeu gérant la boucle de jeu et tous les systèmes."""
@@ -35,6 +38,10 @@ class Game:
         self.card_draft = CardDraft()
         self.ui = GameUI(width, height)
         
+        # Systèmes d'effets et audio
+        self.effects = EffectsSystem()
+        self.audio = AudioSystem()
+        
         # Timer pour le spawning des ennemis
         self.spawn_timer = 0
         self.spawn_interval = 2000  # millisecondes
@@ -62,8 +69,31 @@ class Game:
         if self.paused or self.game_state != "playing":
             return
         
+        # Compter les projectiles avant mise à jour
+        projectiles_before = len(self.player.projectiles)
+        
         # Mise à jour du joueur
         self.player.update(dt)
+        
+        # Vérifier si de nouveaux projectiles ont été créés
+        projectiles_after = len(self.player.projectiles)
+        if projectiles_after > projectiles_before:
+            # Effet visuel et sonore pour le tir
+            for i in range(projectiles_after - projectiles_before):
+                projectile = self.player.projectiles[-(i+1)]
+                self.effects.create_projectile_fire_effect(
+                    projectile.rect.centerx,
+                    projectile.rect.centery
+                )
+            self.audio.play_combat_sound('projectile_fire')
+        
+        # Créer des traînées pour les projectiles en mouvement
+        for projectile in self.player.projectiles:
+            if random.random() < 0.3:  # 30% de chance par frame
+                self.effects.create_projectile_trail(
+                    projectile.rect.centerx,
+                    projectile.rect.centery
+                )
         
         # Spawning des ennemis
         self.spawn_timer += dt
@@ -75,6 +105,9 @@ class Game:
         
         # Mise à jour des ennemis
         self.enemy_spawner.update(dt, self.player.rect.center)
+        
+        # Mise à jour des effets visuels
+        self.effects.update(dt / 1000.0)  # Convertir ms en secondes
         
         # Détection des collisions
         self._handle_collisions()
@@ -90,6 +123,10 @@ class Game:
             if self.player.rect.colliderect(enemy.rect):
                 self.player.take_damage(enemy.damage)
                 enemy.health = 0  # L'ennemi meurt après attaque
+                
+                # Effet visuel de mort d'ennemi
+                self.effects.create_enemy_death_effect(enemy.rect.centerx, enemy.rect.centery)
+                self.audio.play_combat_sound('enemy_death')
         
         # Collision attaques joueur-ennemis
         for projectile in self.player.projectiles:
@@ -98,12 +135,26 @@ class Game:
                     enemy.take_damage(projectile.damage)
                     projectile.active = False
                     
+                    # Effet d'impact du projectile
+                    self.effects.create_projectile_impact_effect(projectile.rect.centerx, projectile.rect.centery)
+                    self.audio.play_combat_sound('projectile_impact')
+                    
                     # Si l'ennemi meurt, donner de l'XP
                     if enemy.health <= 0:
+                        # Effet de mort d'ennemi
+                        self.effects.create_enemy_death_effect(enemy.rect.centerx, enemy.rect.centery)
+                        self.audio.play_combat_sound('enemy_death')
+                        
                         xp_gained = self.xp_system.gain_xp(enemy.xp_value)
                         
                         # Vérification du level up
                         if self.xp_system.check_level_up():
+                            # Effet de level up spectaculaire
+                            self.effects.create_level_up_effect(
+                                self.player.rect.centerx,
+                                self.player.rect.centery
+                            )
+                            
                             self.game_state = "drafting"
                             self.card_draft.start_draft(self.xp_system.level)
     
@@ -116,6 +167,9 @@ class Game:
             # Rendu des éléments de jeu
             self.player.draw(self.screen)
             self.enemy_spawner.draw(self.screen)
+            
+            # Effets visuels
+            self.effects.draw(self.screen)
             
             # Interface utilisateur
             self.ui.draw_hud(self.screen, self.player, self.xp_system)
@@ -131,7 +185,27 @@ class Game:
             if self.card_draft.is_complete():
                 selected_card = self.card_draft.get_selected_card()
                 if selected_card:
+                    # Effet visuel et sonore de sélection de carte
+                    card_center_x = self.width // 2
+                    card_center_y = self.height // 2
+                    self.effects.create_card_selection_effect(
+                        card_center_x, 
+                        card_center_y, 
+                        selected_card['rarity']
+                    )
+                    self.audio.play_card_selection(selected_card['rarity'])
+                    
+                    # Appliquer l'effet de la carte
                     self.player.apply_card_effect(selected_card)
+                    
+                    # Effet d'application de l'upgrade
+                    self.effects.create_upgrade_effect(
+                        self.player.rect.centerx,
+                        self.player.rect.centery,
+                        selected_card['effect_type']
+                    )
+                    self.audio.play_upgrade_effect(selected_card['effect_type'])
+                    
                 self.game_state = "playing"
         
         elif self.game_state == "game_over":

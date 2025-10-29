@@ -25,7 +25,15 @@ class Projectile:
     
     def draw(self, screen):
         """Dessine le projectile."""
-        pygame.draw.circle(screen, (255, 255, 0), self.rect.center, 3)
+        # Projectile avec effet de glow
+        # Centre brillant
+        pygame.draw.circle(screen, (255, 255, 200), self.rect.center, 4)
+        # Cercle principal
+        pygame.draw.circle(screen, (255, 255, 100), self.rect.center, 3)
+        # Halo externe
+        glow_surface = pygame.Surface((20, 20), pygame.SRCALPHA)
+        pygame.draw.circle(glow_surface, (255, 255, 0, 60), (10, 10), 8)
+        screen.blit(glow_surface, (self.rect.centerx - 10, self.rect.centery - 10))
 
 class Player:
     """Classe représentant le joueur avec déplacement et attaque."""

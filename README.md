@@ -13,6 +13,8 @@ GamePython2D/
 │   ├── card_system.py       # Card system and drafting
 │   ├── xp_system.py         # Experience system
 │   ├── ui.py                # User interface
+│   ├── effects_system.py    # Visual effects and particles
+│   ├── audio_system.py      # Procedural audio generation
 │   ├── ai_environment.py    # AI Environment (Gymnasium)
 │   └── ai_trainer.py        # AI Trainer (PPO)
 ├── tools/                   # Development tools
@@ -42,6 +44,8 @@ GamePython2D/
 - ⭐ Experience and leveling system
 - 🃏 3-card draft system for player upgrades
 - 💥 Collision and combat mechanics
+- 🎆 **Visual effects system** with particle effects
+- 🔊 **Procedural audio system** with dynamic sound generation
 
 ### Interface
 - 🖥️ 1200x800 resolution
@@ -89,6 +93,7 @@ python tools/training/curriculum_trainer.py  # Advanced curriculum training
 ```bash
 python tools/testing/test_ai_effectiveness.py  # Effectiveness analysis
 python tools/testing/test_ai_shooting.py       # Shooting system test
+python tools/testing/test_effects_demo.py      # Visual effects demo
 ```
 
 ### Debug and Analysis
@@ -160,3 +165,28 @@ python clean_project.py  # Clean old logs and temporary files
 - **Position Awareness**: New system to prevent edge-hugging behavior
 - **Gymnasium Integration**: Standard RL environment interface
 - **Real-time Visualization**: Both training metrics and gameplay demo
+- **Effects System**: Particle-based visual effects with procedural audio
+- **Performance Optimized**: Minimal FPS impact with smart particle management
+
+## 🎆 Effects System
+
+The game features a comprehensive visual and audio effects system. See [EFFECTS_SYSTEM.md](EFFECTS_SYSTEM.md) for full documentation.
+
+### Visual Effects
+- **Particle System**: Dynamic particles with gravity, velocity, and life
+- **Card Selection Effects**: Unique effects for each rarity (Common → Legendary)
+- **Upgrade Effects**: Visual feedback for each stat boost
+- **Combat Effects**: Projectile firing, impacts, and enemy deaths
+- **Level Up**: Spectacular multi-layered effect with screen shake
+
+### Audio System
+- **Procedural Generation**: All sounds generated algorithmically
+- **Frequency-based Design**: Each card rarity has a unique frequency
+- **Dynamic Mixing**: Automatic volume balancing
+- **Combat Sounds**: Laser shots, impacts, and explosions
+- **No External Files**: Fully self-contained audio system
+
+Test the effects interactively:
+```bash
+python tools/testing/test_effects_demo.py
+```

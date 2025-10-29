@@ -2,6 +2,15 @@ import pygame
 import random
 from typing import List, Dict, Optional
 
+# Import des nouveaux systèmes d'effets
+try:
+    from .effects_system import EffectsSystem
+    from .audio_system import AudioSystem
+except ImportError:
+    # Fallback si les modules ne sont pas disponibles
+    EffectsSystem = None
+    AudioSystem = None
+
 class Card:
     """Classe représentant une carte d'amélioration."""
     
