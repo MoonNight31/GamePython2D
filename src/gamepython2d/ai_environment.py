@@ -302,7 +302,6 @@ class GameAIEnvironment(gym.Env):
             # Appliquer les effets de la carte au joueur
             self._apply_card_effects(selected_card)
             self.cards_obtained.append(selected_card)
-            print(f"🃏 IA Level {level}: Carte sélectionnée - {selected_card.name}")
     
     def _choose_best_card(self, cards: list) -> Optional[Card]:
         """Choisit la meilleure carte selon une stratégie."""
