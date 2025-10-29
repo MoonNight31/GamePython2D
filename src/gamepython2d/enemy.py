@@ -1,19 +1,39 @@
 import pygame
 import random
 import math
+import os
 from typing import List, Tuple
 from dataclasses import dataclass
+from PIL import Image
 
 class Enemy:
     """Classe représentant un ennemi basique."""
     
+    # Variable de classe pour stocker les frames du GIF (partagées entre tous les ennemis)
+    _alien_frames = None
+    _frames_loaded = False
+    
     def __init__(self, x: int, y: int, enemy_type: str = "basic"):
-        self.rect = pygame.Rect(x, y, 20, 20)
+        # Charger le GIF si ce n'est pas déjà fait
+        if not Enemy._frames_loaded:
+            self._load_alien_gif()
+        
+        # Taille de l'ennemi basée sur le sprite
+        sprite_size = 40  # Taille par défaut
+        if Enemy._alien_frames and len(Enemy._alien_frames) > 0:
+            sprite_size = Enemy._alien_frames[0].get_width()
+        
+        self.rect = pygame.Rect(x, y, sprite_size, sprite_size)
         self.enemy_type = enemy_type
         
         # Position flottante pour mouvement précis
         self.x_float = float(x)
         self.y_float = float(y)
+        
+        # Animation
+        self.current_frame = 0
+        self.animation_timer = 0
+        self.animation_speed = 100  # ms entre chaque frame
         
         # Statistiques selon le type
         if enemy_type == "basic":
@@ -22,18 +42,23 @@ class Enemy:
             self.damage = 15
             self.xp_value = 10
             self.color = (255, 100, 100)
+            self.scale = 1.0
         elif enemy_type == "fast":
             self.max_health = 20
             self.speed = 150
             self.damage = 10
             self.xp_value = 15
             self.color = (255, 150, 100)
+            self.scale = 0.8
+            self.animation_speed = 50  # Plus rapide
         elif enemy_type == "tank":
             self.max_health = 80
             self.speed = 40
             self.damage = 25
             self.xp_value = 25
             self.color = (150, 50, 50)
+            self.scale = 1.3
+            self.animation_speed = 150  # Plus lent
         
         self.health = self.max_health
         self.velocity = pygame.Vector2(0, 0)
@@ -42,8 +67,61 @@ class Enemy:
         self.damage_flash_time = 0
         self.original_color = self.color
     
+    @classmethod
+    def _load_alien_gif(cls):
+        """Charge les frames du GIF alien."""
+        try:
+            # Chemin vers le GIF
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            project_root = os.path.dirname(os.path.dirname(current_dir))
+            gif_path = os.path.join(project_root, 'img', 'alien', 'alien.gif')
+            
+            print(f"👽 Chargement du GIF alien: {gif_path}")
+            
+            # Ouvrir le GIF avec PIL
+            gif = Image.open(gif_path)
+            
+            frames = []
+            try:
+                while True:
+                    # Convertir la frame en surface pygame
+                    frame = gif.copy().convert('RGBA')
+                    
+                    # Convertir PIL Image en pygame Surface
+                    mode = frame.mode
+                    size = frame.size
+                    data = frame.tobytes()
+                    
+                    pygame_surface = pygame.image.fromstring(data, size, mode)
+                    
+                    # Redimensionner pour une taille raisonnable
+                    scaled_surface = pygame.transform.scale(pygame_surface, (40, 40))
+                    frames.append(scaled_surface)
+                    
+                    # Passer à la frame suivante
+                    gif.seek(gif.tell() + 1)
+            except EOFError:
+                pass  # Fin du GIF
+            
+            cls._alien_frames = frames
+            cls._frames_loaded = True
+            print(f"✅ GIF alien chargé avec succès! ({len(frames)} frames)")
+            
+        except Exception as e:
+            print(f"⚠️  Impossible de charger le GIF alien: {e}")
+            print(f"   Utilisation de sprites par défaut")
+            cls._alien_frames = []
+            cls._frames_loaded = True
+    
     def update(self, dt: float, player_pos: Tuple[int, int]):
         """Met à jour l'ennemi (IA, mouvement, etc.)."""
+        # Mise à jour de l'animation
+        self.animation_timer += dt
+        if self.animation_timer >= self.animation_speed:
+            self.animation_timer = 0
+            if Enemy._alien_frames and len(Enemy._alien_frames) > 0:
+                self.current_frame = (self.current_frame + 1) % len(Enemy._alien_frames)
+        
         # IA simple : se diriger vers le joueur
         direction = pygame.Vector2(
             player_pos[0] - self.rect.centerx,
@@ -80,14 +158,35 @@ class Enemy:
     
     def draw(self, screen):
         """Dessine l'ennemi."""
-        # Couleur selon l'état
-        if self.damage_flash_time > 0:
-            current_color = (255, 255, 255)  # Flash blanc
+        # Utiliser le sprite animé si disponible
+        if Enemy._alien_frames and len(Enemy._alien_frames) > 0:
+            current_sprite = Enemy._alien_frames[self.current_frame]
+            
+            # Appliquer l'échelle selon le type
+            if self.scale != 1.0:
+                width = int(current_sprite.get_width() * self.scale)
+                height = int(current_sprite.get_height() * self.scale)
+                current_sprite = pygame.transform.scale(current_sprite, (width, height))
+                # Ajuster le rect pour garder le centre
+                old_center = self.rect.center
+                self.rect = current_sprite.get_rect()
+                self.rect.center = old_center
+            
+            # Appliquer un effet de flash blanc si endommagé
+            if self.damage_flash_time > 0:
+                # Créer une copie avec teinte blanche
+                flash_sprite = current_sprite.copy()
+                flash_sprite.fill((255, 255, 255, 128), special_flags=pygame.BLEND_RGBA_MULT)
+                screen.blit(flash_sprite, self.rect)
+            else:
+                screen.blit(current_sprite, self.rect)
         else:
-            current_color = self.original_color
-        
-        # Corps de l'ennemi
-        pygame.draw.rect(screen, current_color, self.rect)
+            # Fallback: dessiner un rectangle coloré
+            if self.damage_flash_time > 0:
+                current_color = (255, 255, 255)  # Flash blanc
+            else:
+                current_color = self.original_color
+            pygame.draw.rect(screen, current_color, self.rect)
         
         # Barre de vie si endommagé
         if self.health < self.max_health:
