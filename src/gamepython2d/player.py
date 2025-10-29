@@ -59,6 +59,9 @@ class Player:
         self.facing_direction = pygame.Vector2(1, 0)  # Direction vers laquelle le joueur regarde
         self.angle = 0  # Angle de rotation du vaisseau
         
+        # Tir continu pour le joueur humain
+        self.mouse_held = False  # Suivi de l'état du clic souris
+        
         # Projectiles
         self.projectiles: List[Projectile] = []
         self.projectile_speed = 300
@@ -116,15 +119,23 @@ class Player:
             self.image = self.original_image.copy()
     
     def handle_event(self, event):
-        """Gère les événements d'entrée spécifiques au joueur."""
+        """Gère les événements d'entrée du joueur."""
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Clic gauche
+                self.mouse_held = True
                 self.attack(pygame.mouse.get_pos())
+        elif event.type == pygame.MOUSEBUTTONUP:
+            if event.button == 1:  # Relâchement clic gauche
+                self.mouse_held = False
     
     def update(self, dt: float):
         """Met à jour l'état du joueur."""
         # Gestion du mouvement
         self._handle_movement(dt)
+        
+        # Tir continu si le bouton de la souris est maintenu
+        if self.mouse_held:
+            self.attack(pygame.mouse.get_pos())
         
         # Mise à jour des projectiles
         self._update_projectiles(dt)

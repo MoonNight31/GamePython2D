@@ -29,7 +29,16 @@ class Game:
         # État du jeu
         self.running = True
         self.paused = False
-        self.game_state = "playing"  # "playing", "drafting", "game_over"
+        self.game_state = "menu"  # "menu", "playing", "drafting", "game_over"
+        
+        # Configuration du menu
+        self.menu_font_title = pygame.font.Font(None, 80)
+        self.menu_font_button = pygame.font.Font(None, 50)
+        self.menu_buttons = [
+            {"text": "Jouer", "rect": pygame.Rect(width // 2 - 150, height // 2 - 50, 300, 70), "action": "play"},
+            {"text": "Quitter", "rect": pygame.Rect(width // 2 - 150, height // 2 + 50, 300, 70), "action": "quit"}
+        ]
+        self.menu_selected = 0
         
         # Initialisation des systèmes de jeu
         self.player = Player(width // 2, height // 2)
@@ -57,15 +66,63 @@ class Game:
             
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    self.running = False
+                    if self.game_state == "menu":
+                        self.running = False
+                    else:
+                        self.game_state = "menu"
                 elif event.key == pygame.K_SPACE and self.game_state == "playing":
                     self.paused = not self.paused
+                
+                # Navigation dans le menu
+                elif self.game_state == "menu":
+                    if event.key == pygame.K_UP or event.key == pygame.K_w:
+                        self.menu_selected = (self.menu_selected - 1) % len(self.menu_buttons)
+                    elif event.key == pygame.K_DOWN or event.key == pygame.K_s:
+                        self.menu_selected = (self.menu_selected + 1) % len(self.menu_buttons)
+                    elif event.key == pygame.K_RETURN or event.key == pygame.K_SPACE:
+                        self._handle_menu_action(self.menu_buttons[self.menu_selected]["action"])
+            
+            # Clic souris dans le menu
+            elif event.type == pygame.MOUSEBUTTONDOWN and self.game_state == "menu":
+                mouse_pos = pygame.mouse.get_pos()
+                for i, button in enumerate(self.menu_buttons):
+                    if button["rect"].collidepoint(mouse_pos):
+                        self.menu_selected = i
+                        self._handle_menu_action(button["action"])
             
             # Gestion des événements spécifiques selon l'état du jeu
             if self.game_state == "drafting":
                 self.card_draft.handle_event(event)
             elif self.game_state == "playing" and not self.paused:
                 self.player.handle_event(event)
+    
+    def _handle_menu_action(self, action: str):
+        """Gère les actions du menu principal."""
+        if action == "play":
+            self._start_new_game()
+        elif action == "quit":
+            self.running = False
+    
+    def _start_new_game(self):
+        """Démarre une nouvelle partie en réinitialisant tous les systèmes."""
+        # Réinitialiser le joueur
+        self.player = Player(self.width // 2, self.height // 2)
+        
+        # Réinitialiser les ennemis
+        self.enemy_spawner = EnemySpawner(self.width, self.height)
+        
+        # Réinitialiser le système d'XP
+        self.xp_system.reset()
+        
+        # Vider les orbes
+        self.xp_orbs.clear()
+        
+        # Réinitialiser les timers
+        self.spawn_timer = 0
+        
+        # Passer en mode jeu
+        self.game_state = "playing"
+        self.paused = False
     
     def update(self, dt: float):
         """Met à jour la logique du jeu."""
@@ -123,7 +180,7 @@ class Game:
                     orb.rect.centery,
                     'health_boost'  # Utiliser un effet vert pour l'XP
                 )
-                self.audio.play_ui_sound('xp_gain')
+                self.audio.play_upgrade_effect('health_boost')
                 
                 # Donner l'XP au joueur
                 xp_gained = self.xp_system.gain_xp(orb.xp_value)
@@ -194,7 +251,11 @@ class Game:
         # Fond noir
         self.screen.fill((20, 20, 30))
         
-        if self.game_state == "playing":
+        if self.game_state == "menu":
+            # Dessiner le menu principal
+            self._draw_menu()
+        
+        elif self.game_state == "playing":
             # Rendu des éléments de jeu
             self.player.draw(self.screen)
             self.enemy_spawner.draw(self.screen)
@@ -247,6 +308,58 @@ class Game:
             self.ui.draw_game_over(self.screen, self.xp_system.level)
         
         pygame.display.flip()
+    
+    def _draw_menu(self):
+        """Dessine le menu principal."""
+        # Titre du jeu
+        title_text = self.menu_font_title.render("Game Python 2D", True, (255, 255, 255))
+        title_rect = title_text.get_rect(center=(self.width // 2, self.height // 4))
+        self.screen.blit(title_text, title_rect)
+        
+        # Sous-titre
+        subtitle_font = pygame.font.Font(None, 36)
+        subtitle_text = subtitle_font.render("Roguelike Survivor", True, (150, 150, 200))
+        subtitle_rect = subtitle_text.get_rect(center=(self.width // 2, self.height // 4 + 60))
+        self.screen.blit(subtitle_text, subtitle_rect)
+        
+        # Dessiner les boutons
+        mouse_pos = pygame.mouse.get_pos()
+        for i, button in enumerate(self.menu_buttons):
+            # Vérifier si la souris survole le bouton
+            is_hovered = button["rect"].collidepoint(mouse_pos)
+            is_selected = i == self.menu_selected
+            
+            # Couleurs selon l'état
+            if is_selected or is_hovered:
+                bg_color = (100, 100, 150)
+                text_color = (255, 255, 255)
+                border_color = (200, 200, 255)
+            else:
+                bg_color = (50, 50, 80)
+                text_color = (180, 180, 200)
+                border_color = (100, 100, 120)
+            
+            # Dessiner le fond du bouton
+            pygame.draw.rect(self.screen, bg_color, button["rect"])
+            pygame.draw.rect(self.screen, border_color, button["rect"], 3)
+            
+            # Dessiner le texte du bouton
+            button_text = self.menu_font_button.render(button["text"], True, text_color)
+            button_text_rect = button_text.get_rect(center=button["rect"].center)
+            self.screen.blit(button_text, button_text_rect)
+        
+        # Instructions
+        instructions_font = pygame.font.Font(None, 28)
+        instructions = [
+            "Utilisez les flèches ↑↓ ou la souris pour naviguer",
+            "Appuyez sur ENTRÉE ou cliquez pour sélectionner"
+        ]
+        y_offset = self.height - 120
+        for instruction in instructions:
+            text = instructions_font.render(instruction, True, (120, 120, 140))
+            text_rect = text.get_rect(center=(self.width // 2, y_offset))
+            self.screen.blit(text, text_rect)
+            y_offset += 35
     
     def run(self):
         """Boucle principale du jeu."""
