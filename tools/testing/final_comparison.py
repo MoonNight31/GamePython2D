@@ -8,7 +8,7 @@ import os
 import time
 
 # Ajouter le répertoire src au path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 def compare_old_vs_new():
     """Compare directement l'ancienne IA passive vs la nouvelle IA active."""

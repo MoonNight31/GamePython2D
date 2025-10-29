@@ -15,16 +15,22 @@ GamePython2D/
 │   ├── ui.py                # User interface
 │   ├── ai_environment.py    # AI Environment (Gymnasium)
 │   └── ai_trainer.py        # AI Trainer (PPO)
+├── tools/                   # Development tools
+│   ├── debug/               # Debug utilities
+│   ├── training/            # AI training tools
+│   ├── testing/             # Testing and analysis tools
+│   └── README.md            # Tools documentation
 ├── ai_models/               # Trained AI models
 │   ├── demo_ai_final.zip    # Passive AI (demonstration)
+│   ├── curriculum_stage_*.zip # Curriculum learning models
 │   └── game_ai_model_final.zip # Active AI (final)
 ├── ai_logs/                 # TensorBoard training logs
+├── archive/                 # Archived old files
 ├── tests/                   # Unit tests
 ├── main.py                  # Game entry point
 ├── train_ai.py              # AI training script
-├── test_ai.py               # AI testing script
 ├── demo_ai.py               # AI demonstration
-├── final_comparison.py      # AI comparison tool
+├── clean_project.py         # Project cleanup utility
 └── pyproject.toml           # Configuration and dependencies
 ```
 
@@ -75,22 +81,25 @@ python main.py
 
 ### Train a New AI
 ```bash
-python train_ai.py
+python train_ai.py                           # Basic training
+python tools/training/curriculum_trainer.py  # Advanced curriculum training
 ```
 
 ### Test the AI
 ```bash
-python test_ai.py
+python tools/testing/test_ai_effectiveness.py  # Effectiveness analysis
+python tools/testing/test_ai_shooting.py       # Shooting system test
 ```
 
-### Watch AI in Action
+### Debug and Analysis
 ```bash
-python demo_ai.py
+python tools/debug/debug_projectile_creation.py  # Debug projectiles
+python tools/testing/analyze_ai_behavior.py      # Analyze behavior
 ```
 
-### Compare AI Performance
+### Clean Project
 ```bash
-python final_comparison.py
+python clean_project.py  # Clean old logs and temporary files
 ```
 
 ## 🤖 AI Evolution

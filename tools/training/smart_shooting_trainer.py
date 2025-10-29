@@ -10,7 +10,7 @@ import time
 import numpy as np
 
 # Ajouter le répertoire src au path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from gamepython2d.ai_trainer import GameAITrainer
 from gamepython2d.ai_environment import GameAIEnvironment

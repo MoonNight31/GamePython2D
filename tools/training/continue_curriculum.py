@@ -6,7 +6,7 @@ Lance l'étape 2 du curriculum (mouvement) avec le modèle de l'étape 1
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 from curriculum_trainer import CurriculumLearningTrainer
 

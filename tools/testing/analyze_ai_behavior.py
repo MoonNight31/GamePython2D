@@ -5,7 +5,7 @@ Diagnostic avancé du comportement de l'IA - Pourquoi elle ne tire pas
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 import numpy as np
 from gamepython2d.ai_trainer import GameAITrainer

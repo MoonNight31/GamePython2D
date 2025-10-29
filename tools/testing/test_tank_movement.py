@@ -5,7 +5,7 @@ Test de déplacement des ennemis tanks
 
 import sys
 import os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
 import pygame
 from gamepython2d.enemy import Enemy
