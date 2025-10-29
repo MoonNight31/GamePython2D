@@ -2,6 +2,7 @@ import gymnasium as gym
 import numpy as np
 import pygame
 import math
+import random
 from typing import Dict, Tuple, Any, Optional
 from gymnasium import spaces
 
@@ -12,6 +13,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from gamepython2d.player import Player
 from gamepython2d.enemy import EnemySpawner, XPOrb
 from gamepython2d.xp_system import XPSystem
+from gamepython2d.card_system import CardDatabase, Card
 
 class GameAIEnvironment(gym.Env):
     """
@@ -100,10 +102,14 @@ class GameAIEnvironment(gym.Env):
         """Remet l'environnement à zéro."""
         super().reset(seed=seed)
         
-        # Réinitialiser les composants du jeu
-        self.player = Player(self.screen_width // 2, self.screen_height // 2)
-        self.enemy_spawner = EnemySpawner(self.screen_width, self.screen_height)
+        # Réinitialiser les composants du jeu (mode training = pas d'images)
+        self.player = Player(self.screen_width // 2, self.screen_height // 2, use_images=False)
+        self.enemy_spawner = EnemySpawner(self.screen_width, self.screen_height, use_images=False)
         self.xp_system = XPSystem()
+        
+        # Système de cartes
+        self.card_database = CardDatabase()
+        self.cards_obtained = []  # Liste des cartes obtenues
         
         # Liste des orbes d'XP
         self.xp_orbs = []
@@ -224,8 +230,11 @@ class GameAIEnvironment(gym.Env):
         for orb in self.xp_orbs[:]:  # Copie de la liste pour itération sûre
             if orb.collected:
                 # Donner l'XP au joueur
-                self.xp_system.gain_xp(orb.xp_value)
-                # Pas de level up automatique pour l'IA (pour simplifier)
+                xp_gained = self.xp_system.gain_xp(orb.xp_value)
+                
+                # Vérifier le level up et sélectionner une carte automatiquement
+                if self.xp_system.check_level_up():
+                    self._auto_select_card()
                 
                 # Retirer l'orbe de la liste
                 self.xp_orbs.remove(orb)
@@ -261,6 +270,115 @@ class GameAIEnvironment(gym.Env):
                             # Créer un orbe d'XP à la position de l'ennemi
                             xp_orb = XPOrb(enemy.rect.centerx, enemy.rect.centery, enemy.xp_value)
                             self.xp_orbs.append(xp_orb)
+    
+    def _auto_select_card(self):
+        """Sélectionne et applique automatiquement une carte lors d'un level up."""
+        # Obtenir 3 cartes aléatoires selon le niveau
+        level = self.xp_system.level
+        
+        # Ajuster les probabilités selon le niveau
+        if level >= 20:
+            rarity_weights = {'common': 0.2, 'uncommon': 0.3, 'rare': 0.3, 'epic': 0.15, 'legendary': 0.05}
+        elif level >= 15:
+            rarity_weights = {'common': 0.3, 'uncommon': 0.35, 'rare': 0.25, 'epic': 0.08, 'legendary': 0.02}
+        elif level >= 10:
+            rarity_weights = {'common': 0.4, 'uncommon': 0.35, 'rare': 0.2, 'epic': 0.05, 'legendary': 0.0}
+        elif level >= 5:
+            rarity_weights = {'common': 0.5, 'uncommon': 0.35, 'rare': 0.15, 'epic': 0.0, 'legendary': 0.0}
+        else:
+            rarity_weights = {'common': 0.7, 'uncommon': 0.25, 'rare': 0.05, 'epic': 0.0, 'legendary': 0.0}
+        
+        # Obtenir 3 cartes aléatoires
+        available_cards = self.card_database.get_random_cards(3, rarity_weights)
+        
+        # Stratégie de sélection intelligente pour l'IA
+        selected_card = self._choose_best_card(available_cards)
+        
+        if selected_card:
+            # Appliquer les effets de la carte au joueur
+            self._apply_card_effects(selected_card)
+            self.cards_obtained.append(selected_card)
+            print(f"🃏 IA Level {level}: Carte sélectionnée - {selected_card.name}")
+    
+    def _choose_best_card(self, cards: list) -> Optional[Card]:
+        """Choisit la meilleure carte selon une stratégie."""
+        if not cards:
+            return None
+        
+        # Stratégie prioritaire basée sur le niveau et les besoins
+        priorities = {
+            'damage_boost': 10.0,      # Priorité très haute (tuer plus vite)
+            'attack_speed_boost': 8.0, # Priorité haute (tirer plus)
+            'speed_boost': 6.0,        # Priorité moyenne-haute (éviter)
+            'health_boost': 5.0,       # Priorité moyenne (survivre)
+            'heal': 4.0,               # Priorité moyenne-basse (urgence seulement)
+            'multi_shot': 12.0         # Priorité MAXIMUM (plusieurs cibles)
+        }
+        
+        # Ajuster selon la santé actuelle
+        health_ratio = self.player.health / self.player.max_health
+        if health_ratio < 0.3:
+            # Santé basse : prioriser survie
+            priorities['heal'] = 15.0
+            priorities['health_boost'] = 12.0
+        
+        # Calculer les scores
+        best_card = None
+        best_score = -1
+        
+        for card in cards:
+            score = priorities.get(card.effect_type, 1.0)
+            
+            # Bonus pour rareté
+            rarity_bonus = {
+                'common': 1.0,
+                'uncommon': 1.2,
+                'rare': 1.5,
+                'epic': 2.0,
+                'legendary': 3.0
+            }
+            score *= rarity_bonus.get(card.rarity, 1.0)
+            
+            # Bonus pour valeur élevée
+            score *= (1.0 + card.value * 0.1)
+            
+            if score > best_score:
+                best_score = score
+                best_card = card
+        
+        return best_card
+    
+    def _apply_card_effects(self, card: Card):
+        """Applique les effets d'une carte au joueur."""
+        effect_type = card.effect_type
+        value = card.value
+        
+        if effect_type == "speed_boost":
+            self.player.card_effects['speed_multiplier'] *= (1 + value)
+            print(f"  ⚡ Vitesse: {self.player.speed * self.player.card_effects['speed_multiplier']:.0f}")
+        
+        elif effect_type == "damage_boost":
+            self.player.card_effects['damage_multiplier'] *= (1 + value)
+            new_damage = int(self.player.attack_damage * self.player.card_effects['damage_multiplier'])
+            print(f"  ⚔️ Dégâts: {new_damage}")
+        
+        elif effect_type == "attack_speed_boost":
+            self.player.card_effects['attack_speed_multiplier'] *= (1 + value)
+            new_speed = self.player.attack_speed * self.player.card_effects['attack_speed_multiplier']
+            print(f"  🎯 Cadence: {new_speed:.1f} att/s")
+        
+        elif effect_type == "health_boost":
+            self.player.max_health += int(value)
+            self.player.health += int(value)
+            print(f"  ❤️ Vie max: {self.player.max_health}")
+        
+        elif effect_type == "heal":
+            self.player.health = min(self.player.max_health, self.player.health + int(value))
+            print(f"  💚 Vie: {self.player.health}/{self.player.max_health}")
+        
+        elif effect_type == "multi_shot":
+            self.player.card_effects['projectile_count'] += int(value)
+            print(f"  🎯 Projectiles: {self.player.card_effects['projectile_count']}")
     
     def _calculate_reward(self) -> float:
         """SYSTÈME DE RÉCOMPENSES ULTRA-SIMPLIFIÉ - FOCUS COMBAT ACTIF."""
@@ -401,7 +519,14 @@ class GameAIEnvironment(gym.Env):
             'survival_time': self.survival_time,
             'level': self.xp_system.level,
             'total_reward': self.episode_reward,
-            'enemy_count': len(self.enemy_spawner.enemies)
+            'enemy_count': len(self.enemy_spawner.enemies),
+            'cards_obtained': len(self.cards_obtained),
+            'card_effects': {
+                'speed': self.player.card_effects['speed_multiplier'],
+                'damage': self.player.card_effects['damage_multiplier'],
+                'attack_speed': self.player.card_effects['attack_speed_multiplier'],
+                'projectiles': self.player.card_effects['projectile_count']
+            }
         }
     
     def render(self):

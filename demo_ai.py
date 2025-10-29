@@ -261,10 +261,11 @@ def run_ai_demo(selected_model):
             
             # Affichage des statistiques toutes les 1800 steps (30 secondes à 60 FPS)
             if steps % 1800 == 0:
+                cards_count = info.get('cards_obtained', 0)
+                level = info.get('level', 1)
                 print(f"⏱️ Step {steps:4d} │ ❤️ Vie: {info.get('player_health', 0):3d} │ " +
-                      f"🚀 Projectiles: {info.get('projectiles_fired', 0):3d} │ " +
+                      f"📊 Niveau: {level:2d} │ 🃏 Cartes: {cards_count:2d} │ " +
                       f"⚔️ Kills actifs: {info.get('enemies_killed_by_projectiles', 0):2d} │ " +
-                      f"💥 Kills passifs: {info.get('enemies_killed_by_collision', 0):2d} │ " +
                       f"🏆 Récompense: {total_reward:6.1f}")
             
             if terminated or truncated:
@@ -277,7 +278,19 @@ def run_ai_demo(selected_model):
         # Résultats finaux
         print(f"\n🏆 RÉSULTAT FINAL - {selected_model['name']}:")
         print(f"   ⏱️ Temps de survie: {steps} steps ({steps/60:.1f} secondes)")
-        print(f"   🚀 Projectiles tirés: {info.get('projectiles_fired', 0)}")
+        print(f"   � Niveau atteint: {info.get('level', 1)}")
+        print(f"   🃏 Cartes obtenues: {info.get('cards_obtained', 0)}")
+        
+        # Afficher les effets des cartes
+        card_effects = info.get('card_effects', {})
+        if card_effects:
+            print(f"   ✨ Améliorations actives:")
+            print(f"      ⚡ Vitesse: x{card_effects.get('speed', 1.0):.2f}")
+            print(f"      ⚔️ Dégâts: x{card_effects.get('damage', 1.0):.2f}")
+            print(f"      🎯 Cadence: x{card_effects.get('attack_speed', 1.0):.2f}")
+            print(f"      🎯 Projectiles: {card_effects.get('projectiles', 1)}")
+        
+        print(f"   �🚀 Projectiles tirés: {info.get('projectiles_fired', 0)}")
         print(f"   ⚔️ Ennemis tués activement: {info.get('enemies_killed_by_projectiles', 0)}")
         print(f"   💥 Ennemis tués passivement: {info.get('enemies_killed_by_collision', 0)}")
         print(f"   🏆 Récompense totale: {total_reward:.1f}")

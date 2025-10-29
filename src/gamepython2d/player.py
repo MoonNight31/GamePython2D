@@ -39,8 +39,9 @@ class Projectile:
 class Player:
     """Classe représentant le joueur avec déplacement et attaque."""
     
-    def __init__(self, x: int, y: int):
-        # Charger l'image du vaisseau
+    def __init__(self, x: int, y: int, use_images: bool = True):
+        # Charger l'image du vaisseau (ou utiliser un sprite simple)
+        self.use_images = use_images
         self._load_image()
         
         # Position et collision (ajusté à la taille de l'image)
@@ -77,7 +78,17 @@ class Player:
         }
     
     def _load_image(self):
-        """Charge l'image du vaisseau spatial."""
+        """Charge l'image du vaisseau spatial ou crée un sprite simple."""
+        # Mode training : utiliser un simple carré pour performance
+        if not self.use_images:
+            self.original_image = pygame.Surface((30, 30), pygame.SRCALPHA)
+            # Dessiner un triangle (vaisseau simplifié)
+            pygame.draw.polygon(self.original_image, (0, 150, 255), 
+                              [(15, 0), (30, 30), (15, 22), (0, 30)])
+            self.image = self.original_image.copy()
+            return
+        
+        # Mode normal : charger l'image
         try:
             # Chemin relatif vers l'image
             current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -99,8 +110,9 @@ class Player:
             # Fallback: créer une surface de base si l'image n'est pas trouvée
             print(f"⚠️  Impossible de charger l'image du vaisseau: {e}")
             print(f"   Utilisation d'un sprite par défaut")
-            self.original_image = pygame.Surface((30, 30))
-            self.original_image.fill((0, 150, 255))
+            self.original_image = pygame.Surface((30, 30), pygame.SRCALPHA)
+            pygame.draw.polygon(self.original_image, (0, 150, 255), 
+                              [(15, 0), (30, 30), (15, 22), (0, 30)])
             self.image = self.original_image.copy()
     
     def handle_event(self, event):

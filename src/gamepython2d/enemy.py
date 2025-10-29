@@ -121,15 +121,19 @@ class Enemy:
     # Variable de classe pour stocker les frames du GIF (partagées entre tous les ennemis)
     _alien_frames = None
     _frames_loaded = False
+    _use_images = True  # Par défaut, utiliser les images
     
-    def __init__(self, x: int, y: int, enemy_type: str = "basic"):
-        # Charger le GIF si ce n'est pas déjà fait
-        if not Enemy._frames_loaded:
+    def __init__(self, x: int, y: int, enemy_type: str = "basic", use_images: bool = True):
+        # Définir si on utilise les images
+        Enemy._use_images = use_images
+        
+        # Charger le GIF si ce n'est pas déjà fait et qu'on utilise les images
+        if use_images and not Enemy._frames_loaded:
             self._load_alien_gif()
         
         # Taille de l'ennemi basée sur le sprite
         sprite_size = 40  # Taille par défaut
-        if Enemy._alien_frames and len(Enemy._alien_frames) > 0:
+        if use_images and Enemy._alien_frames and len(Enemy._alien_frames) > 0:
             sprite_size = Enemy._alien_frames[0].get_width()
         
         self.rect = pygame.Rect(x, y, sprite_size, sprite_size)
@@ -267,35 +271,44 @@ class Enemy:
     
     def draw(self, screen):
         """Dessine l'ennemi."""
-        # Utiliser le sprite animé si disponible
-        if Enemy._alien_frames and len(Enemy._alien_frames) > 0:
-            current_sprite = Enemy._alien_frames[self.current_frame]
-            
-            # Appliquer l'échelle selon le type
-            if self.scale != 1.0:
-                width = int(current_sprite.get_width() * self.scale)
-                height = int(current_sprite.get_height() * self.scale)
-                current_sprite = pygame.transform.scale(current_sprite, (width, height))
-                # Ajuster le rect pour garder le centre
-                old_center = self.rect.center
-                self.rect = current_sprite.get_rect()
-                self.rect.center = old_center
-            
-            # Appliquer un effet de flash blanc si endommagé
-            if self.damage_flash_time > 0:
-                # Créer une copie avec teinte blanche
-                flash_sprite = current_sprite.copy()
-                flash_sprite.fill((255, 255, 255, 128), special_flags=pygame.BLEND_RGBA_MULT)
-                screen.blit(flash_sprite, self.rect)
-            else:
-                screen.blit(current_sprite, self.rect)
-        else:
-            # Fallback: dessiner un rectangle coloré
+        # Mode training : sprite simple
+        if not Enemy._use_images:
+            # Dessiner un cercle simple coloré
             if self.damage_flash_time > 0:
                 current_color = (255, 255, 255)  # Flash blanc
             else:
                 current_color = self.original_color
-            pygame.draw.rect(screen, current_color, self.rect)
+            pygame.draw.circle(screen, current_color, self.rect.center, self.rect.width // 2)
+        else:
+            # Mode normal : utiliser le sprite animé si disponible
+            if Enemy._alien_frames and len(Enemy._alien_frames) > 0:
+                current_sprite = Enemy._alien_frames[self.current_frame]
+                
+                # Appliquer l'échelle selon le type
+                if self.scale != 1.0:
+                    width = int(current_sprite.get_width() * self.scale)
+                    height = int(current_sprite.get_height() * self.scale)
+                    current_sprite = pygame.transform.scale(current_sprite, (width, height))
+                    # Ajuster le rect pour garder le centre
+                    old_center = self.rect.center
+                    self.rect = current_sprite.get_rect()
+                    self.rect.center = old_center
+                
+                # Appliquer un effet de flash blanc si endommagé
+                if self.damage_flash_time > 0:
+                    # Créer une copie avec teinte blanche
+                    flash_sprite = current_sprite.copy()
+                    flash_sprite.fill((255, 255, 255, 128), special_flags=pygame.BLEND_RGBA_MULT)
+                    screen.blit(flash_sprite, self.rect)
+                else:
+                    screen.blit(current_sprite, self.rect)
+            else:
+                # Fallback: dessiner un rectangle coloré
+                if self.damage_flash_time > 0:
+                    current_color = (255, 255, 255)  # Flash blanc
+                else:
+                    current_color = self.original_color
+                pygame.draw.rect(screen, current_color, self.rect)
         
         # Barre de vie si endommagé
         if self.health < self.max_health:
@@ -322,10 +335,11 @@ class Enemy:
 class EnemySpawner:
     """Gestionnaire pour l'apparition et la gestion des ennemis."""
     
-    def __init__(self, screen_width: int, screen_height: int):
+    def __init__(self, screen_width: int, screen_height: int, use_images: bool = True):
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.enemies: List[Enemy] = []
+        self.use_images = use_images
         
         # Configuration du spawning
         self.spawn_zones = self._create_spawn_zones()
@@ -374,8 +388,8 @@ class EnemySpawner:
         # Choisir le type d'ennemi selon les probabilités
         enemy_type = random.choices(self.enemy_types, weights=self.type_weights)[0]
         
-        # Créer et ajouter l'ennemi
-        enemy = Enemy(x, y, enemy_type)
+        # Créer et ajouter l'ennemi (avec ou sans images)
+        enemy = Enemy(x, y, enemy_type, use_images=self.use_images)
         self.enemies.append(enemy)
         self.total_spawned += 1
     
