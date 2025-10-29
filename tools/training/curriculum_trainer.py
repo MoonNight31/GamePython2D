@@ -24,7 +24,7 @@ class CurriculumLearningTrainer:
         self.current_stage = 1
         self.stages = {
             1: "🎯 ÉTAPE 1: Apprendre à tirer",
-            2: "� ÉTAPE 2: Apprendre à viser",
+            2: "🎯 ÉTAPE 2: Apprendre à viser",
             3: "🏃 ÉTAPE 3: Apprendre à se déplacer",
             4: "🛡️ ÉTAPE 4: Apprendre à survivre",
             5: "💎 ÉTAPE 5: Apprendre à ramasser les orbes d'XP",
@@ -43,15 +43,15 @@ class CurriculumLearningTrainer:
             7: {"survival_time": 2000, "kills": 5.0, "episodes_to_check": 5}
         }
         
-        # Timesteps progressifs par étape (augmentés pour meilleur apprentissage)
+        # Timesteps progressifs par étape (augmentés de 300% pour meilleur apprentissage)
         self.stage_timesteps = {
-            1: 150000,   # Étape 1 : Tir de base (150k)
-            2: 200000,   # Étape 2 : Visée (200k - plus complexe)
-            3: 250000,   # Étape 3 : Mouvement (250k)
-            4: 300000,   # Étape 4 : Survie (300k)
-            5: 350000,   # Étape 5 : Collecte XP (350k - nouveau comportement)
-            6: 300000,   # Étape 6 : Cartes (300k)
-            7: 500000,   # Étape 7 : Maîtrise complète (500k - le plus important!)
+            1: 600000,   # Étape 1 : Tir de base (600k - était 150k)
+            2: 800000,   # Étape 2 : Visée (800k - était 200k)
+            3: 1000000,  # Étape 3 : Mouvement (1M - était 250k)
+            4: 1200000,  # Étape 4 : Survie (1.2M - était 300k)
+            5: 1400000,  # Étape 5 : Collecte XP (1.4M - était 350k)
+            6: 1200000,  # Étape 6 : Cartes (1.2M - était 300k)
+            7: 2000000,  # Étape 7 : Maîtrise complète (2M - était 500k)
         }
         
         # Nombre de tentatives maximum par étape
@@ -84,7 +84,9 @@ class CurriculumLearningTrainer:
         # Si c'est la première étape ou on n'a pas de modèle, créer nouveau
         if stage == 1 or not hasattr(self.trainer, 'model') or self.trainer.model is None:
             print("🆕 Création d'un nouveau modèle")
-            self.trainer.create_model(learning_rate=0.0005)
+            # Batch size optimal pour 30 envs avec n_steps=2048
+            # 30 * 2048 = 61440, diviseurs parfaits: 480, 512, 640
+            self.trainer.create_model(learning_rate=0.0005, batch_size=512)
         else:
             print("🔄 Continuation avec le modèle existant")
         
