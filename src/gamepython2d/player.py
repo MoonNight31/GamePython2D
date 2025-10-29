@@ -1,5 +1,6 @@
 import pygame
 import math
+import os
 from typing import List
 from dataclasses import dataclass
 
@@ -39,8 +40,11 @@ class Player:
     """Classe représentant le joueur avec déplacement et attaque."""
     
     def __init__(self, x: int, y: int):
-        # Position et collision
-        self.rect = pygame.Rect(x, y, 30, 30)
+        # Charger l'image du vaisseau
+        self._load_image()
+        
+        # Position et collision (ajusté à la taille de l'image)
+        self.rect = self.image.get_rect(center=(x, y))
         self.speed = 200  # pixels par seconde
         
         # Statistiques
@@ -52,6 +56,7 @@ class Player:
         # État du joueur
         self.last_attack_time = 0
         self.facing_direction = pygame.Vector2(1, 0)  # Direction vers laquelle le joueur regarde
+        self.angle = 0  # Angle de rotation du vaisseau
         
         # Projectiles
         self.projectiles: List[Projectile] = []
@@ -70,6 +75,33 @@ class Player:
             'health_bonus': 0,
             'projectile_count': 1
         }
+    
+    def _load_image(self):
+        """Charge l'image du vaisseau spatial."""
+        try:
+            # Chemin relatif vers l'image
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            # Remonter de src/gamepython2d au projet root
+            project_root = os.path.dirname(os.path.dirname(current_dir))
+            image_path = os.path.join(project_root, 'img', 'spaceship', 'spaceship.png')
+            
+            print(f"🚀 Chargement de l'image: {image_path}")
+            
+            # Charger et redimensionner l'image
+            original_image = pygame.image.load(image_path).convert_alpha()
+            # Redimensionner à une taille raisonnable (environ 50x50)
+            self.original_image = pygame.transform.scale(original_image, (50, 50))
+            self.image = self.original_image.copy()
+            
+            print(f"✅ Image du vaisseau chargée avec succès!")
+            
+        except (pygame.error, FileNotFoundError) as e:
+            # Fallback: créer une surface de base si l'image n'est pas trouvée
+            print(f"⚠️  Impossible de charger l'image du vaisseau: {e}")
+            print(f"   Utilisation d'un sprite par défaut")
+            self.original_image = pygame.Surface((30, 30))
+            self.original_image.fill((0, 150, 255))
+            self.image = self.original_image.copy()
     
     def handle_event(self, event):
         """Gère les événements d'entrée spécifiques au joueur."""
@@ -95,11 +127,11 @@ class Player:
         velocity = pygame.Vector2(0, 0)
         
         # Mouvement WASD ou flèches
-        if keys[pygame.K_w] or keys[pygame.K_UP]:
+        if keys[pygame.K_z] or keys[pygame.K_UP]:
             velocity.y = -1
         if keys[pygame.K_s] or keys[pygame.K_DOWN]:
             velocity.y = 1
-        if keys[pygame.K_a] or keys[pygame.K_LEFT]:
+        if keys[pygame.K_q] or keys[pygame.K_LEFT]:
             velocity.x = -1
         if keys[pygame.K_d] or keys[pygame.K_RIGHT]:
             velocity.x = 1
@@ -113,11 +145,25 @@ class Player:
             self.rect.x += velocity.x * effective_speed * dt / 1000
             self.rect.y += velocity.y * effective_speed * dt / 1000
             
-            # Mise à jour de la direction
+            # Mise à jour de la direction et angle
             self.facing_direction = velocity
+            # Calculer l'angle pour la rotation
+            # L'image de base pointe vers le haut (0°), donc on ajuste de -90°
+            # atan2 donne l'angle depuis l'axe X (droite), on soustrait 90° pour partir du haut
+            self.angle = -math.degrees(math.atan2(velocity.y, velocity.x)) - 90
+            self._update_rotated_image()
         
         # Limites de l'écran
         self.rect.clamp_ip(pygame.Rect(0, 0, 1200, 800))
+    
+    def _update_rotated_image(self):
+        """Met à jour l'image avec la rotation actuelle."""
+        # Rotation de l'image
+        self.image = pygame.transform.rotate(self.original_image, self.angle)
+        # Mettre à jour le rect pour garder le centre
+        old_center = self.rect.center
+        self.rect = self.image.get_rect()
+        self.rect.center = old_center
     
     def _update_projectiles(self, dt: float):
         """Met à jour tous les projectiles."""
@@ -212,18 +258,15 @@ class Player:
     
     def draw(self, screen):
         """Dessine le joueur et ses projectiles."""
-        # Couleur selon l'état
-        current_color = self.damaged_color if self.damage_flash_time > 0 else self.color
-        
-        # Corps principal du joueur
-        pygame.draw.rect(screen, current_color, self.rect)
-        
-        # Indicateur de direction
-        direction_end = (
-            self.rect.centerx + self.facing_direction.x * 20,
-            self.rect.centery + self.facing_direction.y * 20
-        )
-        pygame.draw.line(screen, (255, 255, 255), self.rect.center, direction_end, 2)
+        # Appliquer un effet de flash rouge si endommagé
+        if self.damage_flash_time > 0:
+            # Créer une copie de l'image avec teinte rouge
+            flash_image = self.image.copy()
+            flash_image.fill((255, 100, 100, 128), special_flags=pygame.BLEND_RGBA_MULT)
+            screen.blit(flash_image, self.rect)
+        else:
+            # Dessiner l'image normale du vaisseau
+            screen.blit(self.image, self.rect)
         
         # Projectiles
         for projectile in self.projectiles:

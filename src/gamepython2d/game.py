@@ -217,7 +217,7 @@ class Game:
         """Boucle principale du jeu."""
         print("Démarrage du jeu...")
         print("Contrôles:")
-        print("- WASD ou flèches : déplacement")
+        print("- ZQSD ou flèches : déplacement")
         print("- Clic gauche : attaquer")
         print("- Espace : pause")
         print("- Échap : quitter")

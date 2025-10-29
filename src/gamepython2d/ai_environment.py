@@ -182,6 +182,10 @@ class GameAIEnvironment(gym.Env):
             self.player.rect.x += velocity.x * effective_speed * 16.67 / 1000
             self.player.rect.y += velocity.y * effective_speed * 16.67 / 1000
             self.player.facing_direction = velocity
+            
+            # Mettre à jour l'angle et l'image du vaisseau
+            self.player.angle = -math.degrees(math.atan2(velocity.y, velocity.x)) - 90
+            self.player._update_rotated_image()
         
         # Limites de l'écran
         self.player.rect.clamp_ip(pygame.Rect(0, 0, self.screen_width, self.screen_height))
