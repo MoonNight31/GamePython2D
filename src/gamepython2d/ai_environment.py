@@ -358,30 +358,24 @@ class GameAIEnvironment(gym.Env):
         
         if effect_type == "speed_boost":
             self.player.card_effects['speed_multiplier'] *= (1 + value)
-            print(f"  ⚡ Vitesse: {self.player.speed * self.player.card_effects['speed_multiplier']:.0f}")
         
         elif effect_type == "damage_boost":
             self.player.card_effects['damage_multiplier'] *= (1 + value)
             new_damage = int(self.player.attack_damage * self.player.card_effects['damage_multiplier'])
-            print(f"  ⚔️ Dégâts: {new_damage}")
         
         elif effect_type == "attack_speed_boost":
             self.player.card_effects['attack_speed_multiplier'] *= (1 + value)
             new_speed = self.player.attack_speed * self.player.card_effects['attack_speed_multiplier']
-            print(f"  🎯 Cadence: {new_speed:.1f} att/s")
         
         elif effect_type == "health_boost":
             self.player.max_health += int(value)
             self.player.health += int(value)
-            print(f"  ❤️ Vie max: {self.player.max_health}")
         
         elif effect_type == "heal":
             self.player.health = min(self.player.max_health, self.player.health + int(value))
-            print(f"  💚 Vie: {self.player.health}/{self.player.max_health}")
         
         elif effect_type == "multi_shot":
             self.player.card_effects['projectile_count'] += int(value)
-            print(f"  🎯 Projectiles: {self.player.card_effects['projectile_count']}")
     
     def _calculate_reward(self) -> float:
         """SYSTÈME DE RÉCOMPENSES ULTRA-SIMPLIFIÉ - FOCUS COMBAT ACTIF."""
