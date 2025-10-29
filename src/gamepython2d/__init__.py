@@ -4,7 +4,7 @@ GamePython2D - Un jeu 2D de type roguelike avec système de cartes
 
 from .game import Game
 from .player import Player
-from .enemy import Enemy, EnemySpawner
+from .enemy import Enemy, EnemySpawner, XPOrb
 from .xp_system import XPSystem
 from .card_system import Card, CardDatabase, CardDraft
 from .ui import GameUI

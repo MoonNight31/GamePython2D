@@ -6,6 +6,115 @@ from typing import List, Tuple
 from dataclasses import dataclass
 from PIL import Image
 
+class XPOrb:
+    """Orbe d'expérience qui doit être collecté par le joueur."""
+    
+    def __init__(self, x: int, y: int, xp_value: int):
+        self.x = float(x)
+        self.y = float(y)
+        self.xp_value = xp_value
+        
+        # Taille de l'orbe selon la valeur d'XP
+        self.size = max(8, min(20, 8 + xp_value // 5))
+        self.rect = pygame.Rect(int(x) - self.size // 2, int(y) - self.size // 2, self.size, self.size)
+        
+        # Animation
+        self.pulse_timer = 0
+        self.pulse_speed = 3.0  # Vitesse de pulsation
+        
+        # Magnétisme (attraction vers le joueur)
+        self.magnetic_range = 150  # Distance à laquelle l'orbe est attiré
+        self.magnetic_speed = 200  # Vitesse d'attraction
+        self.velocity_x = 0
+        self.velocity_y = 0
+        
+        # Durée de vie
+        self.lifetime = 30000  # 30 secondes avant de disparaître
+        self.age = 0
+        self.collected = False
+        
+        # Couleur selon la valeur
+        if xp_value >= 20:
+            self.color = (255, 215, 0)  # Or (haute valeur)
+        elif xp_value >= 15:
+            self.color = (100, 200, 255)  # Bleu (moyenne valeur)
+        else:
+            self.color = (100, 255, 100)  # Vert (basse valeur)
+    
+    def update(self, dt: float, player_pos: Tuple[int, int]):
+        """Met à jour l'orbe d'XP."""
+        self.age += dt
+        self.pulse_timer += dt / 1000.0
+        
+        # Vérifier si l'orbe a expiré
+        if self.age >= self.lifetime:
+            return False
+        
+        # Calculer la distance au joueur
+        dx = player_pos[0] - self.x
+        dy = player_pos[1] - self.y
+        distance = math.sqrt(dx * dx + dy * dy)
+        
+        # Attraction magnétique si le joueur est proche
+        if distance < self.magnetic_range and distance > 5:
+            # Normaliser la direction
+            dx /= distance
+            dy /= distance
+            
+            # Appliquer la vitesse magnétique
+            strength = 1.0 - (distance / self.magnetic_range)  # Plus fort quand proche
+            self.velocity_x = dx * self.magnetic_speed * strength
+            self.velocity_y = dy * self.magnetic_speed * strength
+            
+            # Appliquer le mouvement
+            self.x += self.velocity_x * dt / 1000.0
+            self.y += self.velocity_y * dt / 1000.0
+        
+        # Mettre à jour le rect
+        self.rect.centerx = int(self.x)
+        self.rect.centery = int(self.y)
+        
+        # Vérifier la collecte (collision avec le joueur)
+        if distance < 20:
+            self.collected = True
+            return False
+        
+        return True
+    
+    def draw(self, screen):
+        """Dessine l'orbe d'XP avec effet de pulsation."""
+        # Effet de pulsation
+        pulse = math.sin(self.pulse_timer * self.pulse_speed) * 0.2 + 1.0
+        current_size = int(self.size * pulse)
+        
+        # Effet de fade si proche de l'expiration
+        if self.age > self.lifetime * 0.8:
+            alpha = int(255 * (1.0 - (self.age - self.lifetime * 0.8) / (self.lifetime * 0.2)))
+        else:
+            alpha = 255
+        
+        # Dessiner l'orbe avec halo
+        if alpha > 0:
+            # Halo externe
+            halo_size = current_size + 6
+            halo_surface = pygame.Surface((halo_size * 2, halo_size * 2), pygame.SRCALPHA)
+            halo_color = (*self.color, min(alpha // 2, 100))
+            pygame.draw.circle(halo_surface, halo_color, (halo_size, halo_size), halo_size)
+            screen.blit(halo_surface, (int(self.x) - halo_size, int(self.y) - halo_size))
+            
+            # Orbe principal
+            orb_color = (*self.color, alpha)
+            orb_surface = pygame.Surface((current_size * 2, current_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(orb_surface, orb_color, (current_size, current_size), current_size)
+            screen.blit(orb_surface, (int(self.x) - current_size, int(self.y) - current_size))
+            
+            # Centre brillant
+            center_size = current_size // 2
+            center_color = (255, 255, 255, alpha)
+            center_surface = pygame.Surface((center_size * 2, center_size * 2), pygame.SRCALPHA)
+            pygame.draw.circle(center_surface, center_color, (center_size, center_size), center_size)
+            screen.blit(center_surface, (int(self.x) - center_size, int(self.y) - center_size))
+
 class Enemy:
     """Classe représentant un ennemi basique."""
     

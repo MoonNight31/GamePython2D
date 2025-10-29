@@ -3,7 +3,7 @@ import sys
 import random
 from typing import List, Optional
 from .player import Player
-from .enemy import EnemySpawner
+from .enemy import EnemySpawner, XPOrb
 from .xp_system import XPSystem
 from .card_system import CardDraft
 from .ui import GameUI
@@ -37,6 +37,9 @@ class Game:
         self.xp_system = XPSystem()
         self.card_draft = CardDraft()
         self.ui = GameUI(width, height)
+        
+        # Liste des orbes d'XP à collecter
+        self.xp_orbs = []
         
         # Systèmes d'effets et audio
         self.effects = EffectsSystem()
@@ -106,6 +109,37 @@ class Game:
         # Mise à jour des ennemis
         self.enemy_spawner.update(dt, self.player.rect.center)
         
+        # Mise à jour des orbes d'XP
+        player_pos = (self.player.rect.centerx, self.player.rect.centery)
+        self.xp_orbs = [orb for orb in self.xp_orbs if orb.update(dt, player_pos)]
+        
+        # Collecter les orbes d'XP
+        for orb in self.xp_orbs[:]:  # Copie de la liste pour itération sûre
+            if orb.collected:
+                # Effet de collecte d'XP
+                self.effects.create_upgrade_effect(
+                    orb.rect.centerx,
+                    orb.rect.centery
+                )
+                self.audio.play_ui_sound('xp_gain')
+                
+                # Donner l'XP au joueur
+                xp_gained = self.xp_system.gain_xp(orb.xp_value)
+                
+                # Vérification du level up
+                if self.xp_system.check_level_up():
+                    # Effet de level up spectaculaire
+                    self.effects.create_level_up_effect(
+                        self.player.rect.centerx,
+                        self.player.rect.centery
+                    )
+                    
+                    self.game_state = "drafting"
+                    self.card_draft.start_draft(self.xp_system.level)
+                
+                # Retirer l'orbe de la liste
+                self.xp_orbs.remove(orb)
+        
         # Mise à jour des effets visuels
         self.effects.update(dt / 1000.0)  # Convertir ms en secondes
         
@@ -139,24 +173,15 @@ class Game:
                     self.effects.create_projectile_impact_effect(projectile.rect.centerx, projectile.rect.centery)
                     self.audio.play_combat_sound('projectile_impact')
                     
-                    # Si l'ennemi meurt, donner de l'XP
+                    # Si l'ennemi meurt, créer un orbe d'XP
                     if enemy.health <= 0:
                         # Effet de mort d'ennemi
                         self.effects.create_enemy_death_effect(enemy.rect.centerx, enemy.rect.centery)
                         self.audio.play_combat_sound('enemy_death')
                         
-                        xp_gained = self.xp_system.gain_xp(enemy.xp_value)
-                        
-                        # Vérification du level up
-                        if self.xp_system.check_level_up():
-                            # Effet de level up spectaculaire
-                            self.effects.create_level_up_effect(
-                                self.player.rect.centerx,
-                                self.player.rect.centery
-                            )
-                            
-                            self.game_state = "drafting"
-                            self.card_draft.start_draft(self.xp_system.level)
+                        # Créer un orbe d'XP à la position de l'ennemi
+                        xp_orb = XPOrb(enemy.rect.centerx, enemy.rect.centery, enemy.xp_value)
+                        self.xp_orbs.append(xp_orb)
     
     def render(self):
         """Effectue le rendu de tous les éléments."""
@@ -167,6 +192,10 @@ class Game:
             # Rendu des éléments de jeu
             self.player.draw(self.screen)
             self.enemy_spawner.draw(self.screen)
+            
+            # Rendu des orbes d'XP
+            for orb in self.xp_orbs:
+                orb.draw(self.screen)
             
             # Effets visuels
             self.effects.draw(self.screen)

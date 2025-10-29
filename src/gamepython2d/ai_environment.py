@@ -10,7 +10,7 @@ import sys
 import os
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
 from gamepython2d.player import Player
-from gamepython2d.enemy import EnemySpawner
+from gamepython2d.enemy import EnemySpawner, XPOrb
 from gamepython2d.xp_system import XPSystem
 
 class GameAIEnvironment(gym.Env):
@@ -104,6 +104,9 @@ class GameAIEnvironment(gym.Env):
         self.player = Player(self.screen_width // 2, self.screen_height // 2)
         self.enemy_spawner = EnemySpawner(self.screen_width, self.screen_height)
         self.xp_system = XPSystem()
+        
+        # Liste des orbes d'XP
+        self.xp_orbs = []
         
         # Réinitialiser les métriques
         self.step_count = 0
@@ -213,6 +216,20 @@ class GameAIEnvironment(gym.Env):
         # Mettre à jour les ennemis
         self.enemy_spawner.update(dt, self.player.rect.center)
         
+        # Mettre à jour les orbes d'XP
+        player_pos = (self.player.rect.centerx, self.player.rect.centery)
+        self.xp_orbs = [orb for orb in self.xp_orbs if orb.update(dt, player_pos)]
+        
+        # Collecter les orbes d'XP
+        for orb in self.xp_orbs[:]:  # Copie de la liste pour itération sûre
+            if orb.collected:
+                # Donner l'XP au joueur
+                self.xp_system.gain_xp(orb.xp_value)
+                # Pas de level up automatique pour l'IA (pour simplifier)
+                
+                # Retirer l'orbe de la liste
+                self.xp_orbs.remove(orb)
+        
         # Détecter les collisions
         self._handle_collisions()
         
@@ -238,11 +255,12 @@ class GameAIEnvironment(gym.Env):
                         projectile.active = False
                         self.total_damage_dealt += damage_dealt
                         
-                        # Si l'ennemi meurt par projectile, c'est un kill actif
+                        # Si l'ennemi meurt par projectile, créer un orbe d'XP
                         if enemy.health <= 0:
                             self.enemies_killed_by_projectiles += 1
-                            self.xp_system.gain_xp(enemy.xp_value)
-                            # Pas de level up automatique pour l'IA (pour simplifier)
+                            # Créer un orbe d'XP à la position de l'ennemi
+                            xp_orb = XPOrb(enemy.rect.centerx, enemy.rect.centery, enemy.xp_value)
+                            self.xp_orbs.append(xp_orb)
     
     def _calculate_reward(self) -> float:
         """SYSTÈME DE RÉCOMPENSES ULTRA-SIMPLIFIÉ - FOCUS COMBAT ACTIF."""
@@ -395,6 +413,10 @@ class GameAIEnvironment(gym.Env):
             # Dessiner les éléments du jeu
             self.player.draw(self.screen)
             self.enemy_spawner.draw(self.screen)
+            
+            # Dessiner les orbes d'XP
+            for orb in self.xp_orbs:
+                orb.draw(self.screen)
             
             # Afficher quelques infos pour le débogage
             font = pygame.font.Font(None, 24)
