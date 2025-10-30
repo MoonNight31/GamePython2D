@@ -147,6 +147,9 @@ class GameAIEnvironment(gym.Env):
     
     def step(self, action: np.ndarray) -> Tuple[np.ndarray, float, bool, bool, Dict]:
         """Exécute une action dans l'environnement."""
+        # Incrémenter le step ID pour le cache de reward
+        self._current_step_id = getattr(self, '_current_step_id', 0) + 1
+        
         self.step_count += 1
         self.survival_time += 1
         
