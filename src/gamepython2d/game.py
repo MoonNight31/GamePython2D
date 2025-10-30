@@ -216,7 +216,6 @@ class Game:
                 
                 # Donner l'XP au joueur
                 xp_gained = self.xp_system.gain_xp(orb.xp_value)
-                print(f"✅ XP collecté: +{orb.xp_value} (Total: {self.xp_system.current_xp}/{self.xp_system._calculate_xp_for_next_level()})")
                 
                 # Vérification du level up
                 if self.xp_system.check_level_up():
