@@ -149,6 +149,18 @@ class CurriculumLearningTrainer:
         env._cached_state_step = current_step
         
         return result
+    
+    def _normalize_reward(self, reward: float, scale: float = 100.0) -> float:
+        """Normalise les récompenses pour éviter les explosions de valeurs.
+        
+        Args:
+            reward: Récompense brute
+            scale: Facteur de division (défaut: 100)
+            
+        Returns:
+            Récompense normalisée clippée entre -10 et +10
+        """
+        return np.clip(reward / scale, -10.0, 10.0)
         
     def create_stage_environment(self, stage: int) -> GameAIEnvironment:
         """Crée un environnement adapté à l'étape d'apprentissage."""
@@ -156,6 +168,9 @@ class CurriculumLearningTrainer:
         
         # Modifier le système de récompenses selon l'étape
         env.curriculum_stage = stage
+        
+        # Limiter la durée des épisodes pour éviter explosions de récompenses
+        env.max_steps = 2000
         
         return env
     
@@ -169,9 +184,15 @@ class CurriculumLearningTrainer:
         print(f"{self.stages[stage]}")
         print(f"{'='*60}")
         
-        # Configurer l'entraîneur
+        # ✅ IMPORTANT: Patcher le système de récompenses AVANT de créer les environnements
+        self._patch_reward_system(stage)
+        
+        # Configurer l'entraîneur avec notre factory d'environnements
         self.trainer.create_environment(n_envs=30)
         print(f"🔍 Vérification: {self.trainer.env.num_envs} environnements créés")
+        
+        # Patcher CHAQUE environnement individuellement
+        self._patch_individual_envs(stage)
         
         # Si c'est la première étape ou on n'a pas de modèle, créer nouveau
         if stage == 1 or not hasattr(self.trainer, 'model') or self.trainer.model is None:
@@ -181,9 +202,6 @@ class CurriculumLearningTrainer:
             self.trainer.create_model(learning_rate=0.0005, batch_size=512)
         else:
             print("🔄 Continuation avec le modèle existant")
-        
-        # Patcher le système de récompenses APRÈS la création des environnements
-        self._patch_reward_system(stage)
         
         # Entraîner
         print(f"🚀 Début de l'entraînement - Étape {stage}")
@@ -272,112 +290,156 @@ class CurriculumLearningTrainer:
         # Appliquer le patch à la classe
         GameAIEnvironment._calculate_reward = curriculum_reward_wrapper
         print(f"📊 Système de récompenses configuré pour l'étape {stage}")
+    
+    def _patch_individual_envs(self, stage: int):
+        """Patch chaque environnement individuellement dans le VecEnv."""
+        print(f"🔧 Patching des environnements individuels pour l'étape {stage}...")
+        
+        # Fonction de reward pour l'étape
+        trainer_instance = self
+        
+        def get_reward_fn(stage_num):
+            """Retourne la fonction de reward pour une étape."""
+            if stage_num == 1:
+                return trainer_instance._stage1_reward
+            elif stage_num == 2:
+                return trainer_instance._stage2_reward
+            elif stage_num == 3:
+                return trainer_instance._stage3_reward
+            elif stage_num == 4:
+                return trainer_instance._stage4_reward
+            elif stage_num == 5:
+                return trainer_instance._stage5_reward
+            elif stage_num == 6:
+                return trainer_instance._stage6_reward
+            elif stage_num == 7:
+                return trainer_instance._stage7_reward
+            else:
+                return None
+        
+        reward_fn = get_reward_fn(stage)
+        if reward_fn is None:
+            print(f"⚠️ Pas de fonction de reward pour l'étape {stage}")
+            return
+        
+        # Accéder aux environnements sous-jacents
+        try:
+            if hasattr(self.trainer.env, 'envs'):
+                # DummyVecEnv ou SubprocVecEnv
+                for env in self.trainer.env.envs:
+                    env._calculate_reward = lambda e=env: reward_fn(e)
+                print(f"✅ {len(self.trainer.env.envs)} environnements patchés")
+            else:
+                print("⚠️ Impossible d'accéder aux environnements individuels")
+        except Exception as e:
+            print(f"⚠️ Erreur lors du patching: {e}")
         
     def _stage1_reward(self, env) -> float:
-        """🎯 ÉTAPE 1: Récompenses focalisées sur le TIR (simplifié)."""
+        """🎯 ÉTAPE 1: Récompenses focalisées sur le TIR (normalisé)."""
         s = self._gather_env_state(env)
-        reward = 0.1  # petite récompense de survie
+        reward = 1.0  # Récompense de base augmentée
 
-        # Encourager le tir
+        # Encourager FORTEMENT le tir (priorité absolue)
         if s['projectiles_fired'] > 0:
-            reward += s['projectiles_fired'] * 10.0
+            reward += s['projectiles_fired'] * 100.0  # ✅ x10 plus fort
             env.projectiles_fired = getattr(env, 'projectiles_fired', 0) + s['projectiles_fired']
 
         # Bonus si vise globalement vers le plus proche ennemi
         if hasattr(env, 'last_action'):
             _, _, attack_x, attack_y, should_attack = env.last_action
             if should_attack > 0.5:
+                reward += 50.0  # ✅ Fort bonus pour l'intention de tirer
                 ndx, ndy = s['closest_enemy_dir']
                 dot = ndx * attack_x + ndy * attack_y
                 if dot > 0.3:
-                    reward += 5.0
+                    reward += 30.0  # ✅ Bonus visée augmenté
 
         if s['p_health'] <= 0:
-            reward -= 20.0
+            reward -= 50.0  # Pénalité mort réduite (pas l'objectif)
 
-        return reward
+        return self._normalize_reward(reward)
     
     def _stage2_reward(self, env) -> float:
-        """🎯 ÉTAPE 2: Récompenses focalisées sur la VISÉE (simplifié)."""
+        """🎯 ÉTAPE 2: Récompenses focalisées sur la VISÉE (normalisé)."""
         s = self._gather_env_state(env)
-        reward = 0.1
+        reward = 2.0  # ✅ Récompense de base augmentée
 
-        # Récompenser la bonne orientation vers l'ennemi
+        # Récompenser FORTEMENT la bonne orientation vers l'ennemi
         if hasattr(env, 'last_action'):
             _, _, attack_x, attack_y, should_attack = env.last_action
             ndx, ndy = s['closest_enemy_dir']
             dot = ndx * attack_x + ndy * attack_y
             if dot > 0.5:
-                reward += dot * 8.0
+                reward += dot * 80.0  # ✅ x10 plus fort
             if should_attack > 0.5 and dot > 0.3:
-                reward += 12.0
+                reward += 120.0  # ✅ x10 plus fort
 
         # Tir et kills
         if s['projectiles_fired'] > 0:
-            reward += s['projectiles_fired'] * 5.0
+            reward += s['projectiles_fired'] * 50.0  # ✅ x10 plus fort
 
-        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 30.0
+        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 300.0  # ✅ x10 plus fort
 
         if s['p_health'] <= 0:
-            reward -= 25.0
+            reward -= 100.0  # ✅ Pénalité augmentée
 
-        return reward
+        return self._normalize_reward(reward)
     
     def _stage3_reward(self, env) -> float:
-        """🏃 ÉTAPE 3: Récompenses focalisées sur le MOUVEMENT (simplifié)."""
+        """🏃 ÉTAPE 3: Récompenses focalisées sur le MOUVEMENT (normalisé)."""
         s = self._gather_env_state(env)
-        reward = 0.2
+        reward = 3.0  # ✅ Récompense de base augmentée
 
-        # Encourager le mouvement
+        # Encourager FORTEMENT le mouvement
         if hasattr(env, 'last_action'):
             move_x, move_y, _, _, _ = env.last_action
             is_moving = abs(move_x) > 0.1 or abs(move_y) > 0.1
             if is_moving:
-                reward += 3.0
+                reward += 30.0  # ✅ x10 plus fort
                 # s'éloigner du plus proche ennemi
                 ndx, ndy = s['closest_enemy_dir']
                 # direction opposée à l'ennemi
                 away_dot = (-ndx) * (move_x) + (-ndy) * (move_y)
                 if away_dot > 0:
-                    reward += away_dot * 2.0
+                    reward += away_dot * 40.0  # ✅ x20 plus fort
 
         # Tir et kills conservés
         if s['projectiles_fired'] > 0:
-            reward += s['projectiles_fired'] * 4.0
-        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 20.0
+            reward += s['projectiles_fired'] * 40.0  # ✅ x10 plus fort
+        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 200.0  # ✅ x10 plus fort
 
         # Pénalité dégâts
         if s['health_lost'] > 0:
-            reward -= s['health_lost'] * 2.0
+            reward -= s['health_lost'] * 20.0  # ✅ x10 plus fort
 
         if s['p_health'] <= 0:
-            reward -= 30.0
+            reward -= 150.0  # ✅ Pénalité augmentée
 
-        return reward
+        return self._normalize_reward(reward)
     
     def _stage4_reward(self, env) -> float:
-        """🛡️ ÉTAPE 4: Récompenses focalisées sur la SURVIE (simplifié)."""
+        """🛡️ ÉTAPE 4: Récompenses focalisées sur la SURVIE (normalisé)."""
         s = self._gather_env_state(env)
-        reward = 0.5
+        reward = 5.0  # ✅ Récompense de base augmentée
 
         # Encourager survie et kills
-        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 15.0
+        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 150.0  # ✅ x10 plus fort
 
         # Mouvement simple
         if hasattr(env, 'last_action'):
             move_x, move_y, _, _, _ = env.last_action
             if abs(move_x) > 0.1 or abs(move_y) > 0.1:
-                reward += 1.0
+                reward += 10.0  # ✅ x10 plus fort
 
         # Tir contribute mais moins
         if s['projectiles_fired'] > 0:
-            reward += s['projectiles_fired'] * 3.0
+            reward += s['projectiles_fired'] * 30.0  # ✅ x10 plus fort
 
         # Pénalité dégâts et mort
         if s['health_lost'] > 0:
-            reward -= s['health_lost'] * 5.0
+            reward -= s['health_lost'] * 50.0  # ✅ x10 plus fort
         if s['p_health'] <= 0:
-            reward -= 100.0
+            reward -= 500.0  # ✅ x5 plus fort
 
         # Position tactique approximée: pénaliser si trop proche des bords (si screen dims disponibles)
         try:
@@ -394,103 +456,107 @@ class CurriculumLearningTrainer:
         except Exception:
             pass
 
-        return reward
+        return self._normalize_reward(reward)
     
     # Note: duplicate _stage4_reward definition removed during simplification.
     
     def _stage5_reward(self, env) -> float:
-        """💎 ÉTAPE 5: Récompenses pour collecte d'XP (simplifié)."""
+        """💎 ÉTAPE 5: Récompenses pour collecte d'XP (normalisé)."""
         s = self._gather_env_state(env)
-        reward = 0.4
+        reward = 4.0  # ✅ Récompense de base augmentée
 
-        # Récompenser XP collecté
+        # Récompenser FORTEMENT XP collecté
         if s['xp_gained'] > 0:
-            reward += s['xp_gained'] * 5.0
+            reward += s['xp_gained'] * 50.0  # ✅ x10 plus fort
             # petit bonus combo si collecte rapide (streak maintenue)
             if not hasattr(env, 'orb_collection_streak'):
                 env.orb_collection_streak = 0
                 env.last_collection_time = env.step_count
             if (env.step_count - getattr(env, 'last_collection_time', env.step_count)) < 100:
                 env.orb_collection_streak = getattr(env, 'orb_collection_streak', 0) + 1
-                reward += env.orb_collection_streak * 2.0
+                reward += env.orb_collection_streak * 20.0  # ✅ x10 plus fort
             else:
                 env.orb_collection_streak = 1
             env.last_collection_time = env.step_count
 
         # Bonus kills and basic shooting
-        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 25.0
+        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 250.0  # ✅ x10 plus fort
         if s['projectiles_fired'] > 0:
-            reward += s['projectiles_fired'] * 2.0
+            reward += s['projectiles_fired'] * 20.0  # ✅ x10 plus fort
 
         # Pénalités
         if s['health_lost'] > 0:
-            reward -= s['health_lost'] * 2.0
+            reward -= s['health_lost'] * 20.0  # ✅ x10 plus fort
         if s['p_health'] <= 0:
-            reward -= 60.0
+            reward -= 300.0  # ✅ x5 plus fort
 
-        return reward
+        return self._normalize_reward(reward)
     
     def _stage6_reward(self, env) -> float:
-        """🃏 ÉTAPE 6: Récompenses pour la sélection de cartes (simplifié)."""
+        """🃏 ÉTAPE 6: Récompenses pour la sélection de cartes (normalisé)."""
         s = self._gather_env_state(env)
-        reward = 0.4
+        reward = 4.0  # ✅ Récompense de base augmentée
 
-        # Level-ups detection (simple)
+        # Level-ups detection (TRÈS RÉCOMPENSÉ)
         current_level = getattr(env.xp_system, 'level', 0)
         if not hasattr(env, 'last_level'):
             env.last_level = current_level
         if current_level > env.last_level:
-            reward += 30.0
+            reward += 300.0  # ✅ x10 plus fort
             env.last_cards_selected = getattr(env, 'last_cards_selected', 0) + 1
             env.last_level = current_level
 
         # XP and kills contribute
         if s['xp_gained'] > 0:
-            reward += s['xp_gained'] * 1.5
-        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 20.0
+            reward += s['xp_gained'] * 15.0  # ✅ x10 plus fort
+        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 200.0  # ✅ x10 plus fort
 
         # Shooting incentive maintained
         if s['projectiles_fired'] > 0:
-            reward += s['projectiles_fired'] * 2.0
+            reward += s['projectiles_fired'] * 20.0  # ✅ x10 plus fort
 
         # Penalties
         if s['health_lost'] > 0:
-            reward -= s['health_lost'] * 4.0
+            reward -= s['health_lost'] * 40.0  # ✅ x10 plus fort
         if s['p_health'] <= 0:
-            reward -= 100.0
+            reward -= 500.0  # ✅ x5 plus fort
 
-        return reward
+        return self._normalize_reward(reward)
     
     def _stage7_reward(self, env) -> float:
-        """🏆 ÉTAPE 7: MAÎTRISE COMPLÈTE - Survie & performance (simplifié)."""
+        """🏆 ÉTAPE 7: MAÎTRISE COMPLÈTE - Survie & performance (normalisé)."""
         s = self._gather_env_state(env)
-        reward = 0.6
+        reward = 6.0  # ✅ Récompense de base augmentée
 
-        # Kills and level
-        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 30.0
+        # Kills and level (FORTEMENT RÉCOMPENSÉS)
+        reward += getattr(env, 'enemies_killed_by_projectiles', 0) * 300.0  # ✅ x10 plus fort
         current_level = getattr(env.xp_system, 'level', 0)
         if current_level >= 5:
-            reward += (current_level - 4) * 10.0
+            reward += (current_level - 4) * 100.0  # ✅ x10 plus fort
 
         # XP
         if s['xp_gained'] > 0:
             reward += s['xp_gained'] * 1.0
 
+        # XP
+        if s['xp_gained'] > 0:
+            reward += s['xp_gained'] * 10.0  # ✅ x10 plus fort
+
         # Shooting
         if s['projectiles_fired'] > 0:
-            reward += s['projectiles_fired'] * 3.0
+            reward += s['projectiles_fired'] * 30.0  # ✅ x10 plus fort
 
         # Movement bonus
         if hasattr(env, 'last_action'):
             move_x, move_y, _, _, _ = env.last_action
             if abs(move_x) > 0.1 or abs(move_y) > 0.1:
-                reward += 1.5
+                reward += 15.0  # ✅ x10 plus fort
 
         # Strong penalties for damage / death
         if s['health_lost'] > 0:
-            reward -= s['health_lost'] * 8.0
+            reward -= s['health_lost'] * 80.0  # ✅ x10 plus fort
         if s['p_health'] <= 0:
-            reward -= 150.0
+            reward -= 800.0  # ✅ x5+ plus fort
 
         # Tactical position approximation
         try:
@@ -499,13 +565,13 @@ class CurriculumLearningTrainer:
             if sw and sh:
                 min_dist = min(px, sw - px, py, sh - py)
                 if min_dist < 100:
-                    reward -= 5.0
+                    reward -= 50.0  # ✅ x10 plus fort
                 elif min_dist > 200:
-                    reward += 1.0
+                    reward += 10.0  # ✅ x10 plus fort
         except Exception:
             pass
 
-        return reward
+        return self._normalize_reward(reward)
     
     def _evaluate_stage(self, stage: int):
         """Évalue les performances de l'étape."""
