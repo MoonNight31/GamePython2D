@@ -14,27 +14,30 @@ class Projectile:
     speed: float
     active: bool = True
     
-    def update(self, dt: float):
+    def update(self, dt: float, world_size: int = 5000):
         """Met à jour la position du projectile."""
         self.rect.x += self.velocity_x * dt / 1000
         self.rect.y += self.velocity_y * dt / 1000
         
-        # Désactiver si hors écran
-        if (self.rect.x < -50 or self.rect.x > 1250 or 
-            self.rect.y < -50 or self.rect.y > 850):
+        # ✅ CORRECTION : Désactiver si hors du MONDE (pas de l'écran)
+        if (self.rect.x < -50 or self.rect.x > world_size + 50 or 
+            self.rect.y < -50 or self.rect.y > world_size + 50):
             self.active = False
     
     def draw(self, screen):
         """Dessine le projectile."""
+        # Utiliser des variables locales pour éviter les problèmes de rect temporaire
+        center_x, center_y = self.rect.center
+        
         # Projectile avec effet de glow
         # Centre brillant
-        pygame.draw.circle(screen, (255, 255, 200), self.rect.center, 4)
+        pygame.draw.circle(screen, (255, 255, 200), (center_x, center_y), 4)
         # Cercle principal
-        pygame.draw.circle(screen, (255, 255, 100), self.rect.center, 3)
+        pygame.draw.circle(screen, (255, 255, 100), (center_x, center_y), 3)
         # Halo externe
         glow_surface = pygame.Surface((20, 20), pygame.SRCALPHA)
         pygame.draw.circle(glow_surface, (255, 255, 0, 60), (10, 10), 8)
-        screen.blit(glow_surface, (self.rect.centerx - 10, self.rect.centery - 10))
+        screen.blit(glow_surface, (center_x - 10, center_y - 10))
 
 class Player:
     """Classe représentant le joueur avec déplacement et attaque."""
@@ -65,6 +68,7 @@ class Player:
         # Projectiles
         self.projectiles: List[Projectile] = []
         self.projectile_speed = 300
+        self.total_projectiles_created = 0  # ✅ NOUVEAU : Compteur absolu des projectiles créés
         
         # Animation simple
         self.color = (0, 150, 255)
@@ -118,27 +122,42 @@ class Player:
                               [(15, 0), (30, 30), (15, 22), (0, 30)])
             self.image = self.original_image.copy()
     
-    def handle_event(self, event):
-        """Gère les événements d'entrée du joueur."""
+    def handle_event(self, event, mouse_world_pos=None):
+        """Gère les événements d'entrée du joueur.
+        
+        Args:
+            event: Événement pygame
+            mouse_world_pos: Position de la souris en coordonnées monde (si None, utilise écran)
+        """
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:  # Clic gauche
                 self.mouse_held = True
-                self.attack(pygame.mouse.get_pos())
+                # Utiliser la position monde si fournie, sinon écran (compatibilité)
+                target_pos = mouse_world_pos if mouse_world_pos is not None else pygame.mouse.get_pos()
+                self.attack(target_pos)
         elif event.type == pygame.MOUSEBUTTONUP:
             if event.button == 1:  # Relâchement clic gauche
                 self.mouse_held = False
     
-    def update(self, dt: float):
-        """Met à jour l'état du joueur."""
+    def update(self, dt: float, world_size: int = 5000, mouse_world_pos=None):
+        """Met à jour l'état du joueur.
+        
+        Args:
+            dt: Delta time
+            world_size: Taille du monde pour limiter les projectiles
+            mouse_world_pos: Position de la souris en coordonnées monde pour tir continu
+        """
         # Gestion du mouvement
         self._handle_movement(dt)
         
         # Tir continu si le bouton de la souris est maintenu
         if self.mouse_held:
-            self.attack(pygame.mouse.get_pos())
+            # Utiliser la position monde si fournie, sinon écran (compatibilité)
+            target_pos = mouse_world_pos if mouse_world_pos is not None else pygame.mouse.get_pos()
+            self.attack(target_pos)
         
         # Mise à jour des projectiles
-        self._update_projectiles(dt)
+        self._update_projectiles(dt, world_size)
         
         # Réduction du flash de dégâts
         if self.damage_flash_time > 0:
@@ -176,8 +195,8 @@ class Player:
             self.angle = -math.degrees(math.atan2(velocity.y, velocity.x)) - 90
             self._update_rotated_image()
         
-        # Limites de l'écran
-        self.rect.clamp_ip(pygame.Rect(0, 0, 1200, 800))
+        # ✅ SUPPRIMÉ : Anciennes limites hardcodées incompatibles avec le système de monde
+        # Les limites sont maintenant gérées dans game.py avec world_size
     
     def _update_rotated_image(self):
         """Met à jour l'image avec la rotation actuelle."""
@@ -188,14 +207,14 @@ class Player:
         self.rect = self.image.get_rect()
         self.rect.center = old_center
     
-    def _update_projectiles(self, dt: float):
+    def _update_projectiles(self, dt: float, world_size: int = 5000):
         """Met à jour tous les projectiles."""
         # Suppression des projectiles inactifs
         self.projectiles = [p for p in self.projectiles if p.active]
         
         # Mise à jour des projectiles actifs
         for projectile in self.projectiles:
-            projectile.update(dt)
+            projectile.update(dt, world_size)
     
     def attack(self, target_pos):
         """Effectue une attaque vers la position cible."""
@@ -236,6 +255,7 @@ class Player:
                     )
                     
                     self.projectiles.append(projectile)
+                    self.total_projectiles_created += 1  # ✅ INCRÉMENTER le compteur
     
     def take_damage(self, damage: int):
         """Le joueur subit des dégâts."""

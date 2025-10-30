@@ -80,6 +80,7 @@ class CurriculumLearningTrainer:
         
         # Configurer l'entraîneur
         self.trainer.create_environment(n_envs=30)
+        print(f"🔍 Vérification: {self.trainer.env.num_envs} environnements créés")
         
         # Si c'est la première étape ou on n'a pas de modèle, créer nouveau
         if stage == 1 or not hasattr(self.trainer, 'model') or self.trainer.model is None:

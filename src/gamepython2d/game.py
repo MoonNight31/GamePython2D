@@ -26,6 +26,12 @@ class Game:
         self.clock = pygame.time.Clock()
         self.fps = 60
         
+        # ✅ NOUVEAU : Système de caméra
+        self.world_size = 5000  # Monde de 5000x5000 pixels
+        self.camera_x = 0
+        self.camera_y = 0
+        self.tile_size = 100  # Taille des tuiles du fond
+        
         # État du jeu
         self.running = True
         self.paused = False
@@ -41,8 +47,9 @@ class Game:
         self.menu_selected = 0
         
         # Initialisation des systèmes de jeu
-        self.player = Player(width // 2, height // 2)
-        self.enemy_spawner = EnemySpawner(width, height)
+        world_center = self.world_size // 2
+        self.player = Player(world_center, world_center)
+        self.enemy_spawner = EnemySpawner(self.world_size, self.world_size)
         self.xp_system = XPSystem()
         self.card_draft = CardDraft()
         self.ui = GameUI(width, height)
@@ -94,7 +101,10 @@ class Game:
             if self.game_state == "drafting":
                 self.card_draft.handle_event(event)
             elif self.game_state == "playing" and not self.paused:
-                self.player.handle_event(event)
+                # Convertir la position de la souris en coordonnées monde
+                mouse_screen_pos = pygame.mouse.get_pos()
+                mouse_world_pos = self._screen_to_world(mouse_screen_pos[0], mouse_screen_pos[1])
+                self.player.handle_event(event, mouse_world_pos)
     
     def _handle_menu_action(self, action: str):
         """Gère les actions du menu principal."""
@@ -105,11 +115,12 @@ class Game:
     
     def _start_new_game(self):
         """Démarre une nouvelle partie en réinitialisant tous les systèmes."""
-        # Réinitialiser le joueur
-        self.player = Player(self.width // 2, self.height // 2)
+        # Réinitialiser le joueur au centre du monde
+        world_center = self.world_size // 2
+        self.player = Player(world_center, world_center)
         
-        # Réinitialiser les ennemis
-        self.enemy_spawner = EnemySpawner(self.width, self.height)
+        # Réinitialiser les ennemis avec la taille du monde
+        self.enemy_spawner = EnemySpawner(self.world_size, self.world_size)
         
         # Réinitialiser le système d'XP
         self.xp_system.reset()
@@ -119,6 +130,9 @@ class Game:
         
         # Réinitialiser les timers
         self.spawn_timer = 0
+        
+        # ✅ NOUVEAU : Centrer la caméra
+        self._update_camera()
         
         # Passer en mode jeu
         self.game_state = "playing"
@@ -132,8 +146,26 @@ class Game:
         # Compter les projectiles avant mise à jour
         projectiles_before = len(self.player.projectiles)
         
-        # Mise à jour du joueur
-        self.player.update(dt)
+        # Convertir la position de la souris en coordonnées monde pour le tir continu
+        mouse_screen_pos = pygame.mouse.get_pos()
+        mouse_world_pos = self._screen_to_world(mouse_screen_pos[0], mouse_screen_pos[1])
+        
+        # Mise à jour du joueur (avec world_size et position souris monde)
+        self.player.update(dt, self.world_size, mouse_world_pos)
+        
+        # ✅ Limiter le CENTRE du joueur au monde (pas le rect entier)
+        if self.player.rect.centerx < 0:
+            self.player.rect.centerx = 0
+        elif self.player.rect.centerx > self.world_size:
+            self.player.rect.centerx = self.world_size
+            
+        if self.player.rect.centery < 0:
+            self.player.rect.centery = 0
+        elif self.player.rect.centery > self.world_size:
+            self.player.rect.centery = self.world_size
+        
+        # ✅ NOUVEAU : Mettre à jour la caméra pour suivre le joueur
+        self._update_camera()
         
         # Vérifier si de nouveaux projectiles ont été créés
         projectiles_after = len(self.player.projectiles)
@@ -246,28 +278,116 @@ class Game:
                         xp_orb = XPOrb(enemy.rect.centerx, enemy.rect.centery, enemy.xp_value)
                         self.xp_orbs.append(xp_orb)
     
+    def _update_camera(self):
+        """Met à jour la position de la caméra pour centrer sur le joueur."""
+        # Centrer la caméra sur le joueur
+        self.camera_x = self.player.rect.centerx
+        self.camera_y = self.player.rect.centery
+    
+    def _world_to_screen(self, world_x: float, world_y: float):
+        """Convertit des coordonnées monde en coordonnées écran.
+        La caméra (camera_x, camera_y) représente le centre de l'écran dans le monde.
+        """
+        screen_x = world_x - self.camera_x + self.width // 2
+        screen_y = world_y - self.camera_y + self.height // 2
+        return screen_x, screen_y
+    
+    def _screen_to_world(self, screen_x: float, screen_y: float):
+        """Convertit des coordonnées écran en coordonnées monde.
+        Inverse de _world_to_screen().
+        """
+        world_x = screen_x + self.camera_x - self.width // 2
+        world_y = screen_y + self.camera_y - self.height // 2
+        return world_x, world_y
+    
+    def _draw_background(self):
+        """Dessine le fond avec grille qui défile."""
+        # Calculer l'offset de la grille basé sur la position de la caméra
+        offset_x = int(self.camera_x % self.tile_size)
+        offset_y = int(self.camera_y % self.tile_size)
+        
+        # Dessiner les lignes verticales
+        for x in range(-offset_x, self.width + self.tile_size, self.tile_size):
+            pygame.draw.line(self.screen, (30, 30, 40), (x, 0), (x, self.height), 1)
+        
+        # Dessiner les lignes horizontales
+        for y in range(-offset_y, self.height + self.tile_size, self.tile_size):
+            pygame.draw.line(self.screen, (30, 30, 40), (0, y), (self.width, y), 1)
+        
+        # Dessiner des points aux intersections pour plus de détail
+        for x in range(-offset_x, self.width + self.tile_size, self.tile_size):
+            for y in range(-offset_y, self.height + self.tile_size, self.tile_size):
+                pygame.draw.circle(self.screen, (40, 40, 50), (x, y), 2)
+    
     def render(self):
         """Effectue le rendu de tous les éléments."""
         # Fond noir
-        self.screen.fill((20, 20, 30))
+        self.screen.fill((15, 15, 25))
         
         if self.game_state == "menu":
             # Dessiner le menu principal
             self._draw_menu()
         
         elif self.game_state == "playing":
-            # Rendu des éléments de jeu
+            # ✅ Dessiner le fond avec grille qui défile
+            self._draw_background()
+            
+            # ✅ Rendu des éléments avec coordonnées caméra
+            # Joueur (toujours au centre de l'écran)
+            player_screen_x, player_screen_y = self._world_to_screen(
+                self.player.rect.centerx, self.player.rect.centery
+            )
+            player_rect = self.player.rect.copy()
+            player_rect.center = (player_screen_x, player_screen_y)
+            old_rect = self.player.rect
+            self.player.rect = player_rect
             self.player.draw(self.screen)
-            self.enemy_spawner.draw(self.screen)
+            self.player.rect = old_rect
+            
+            # Ennemis (avec culling : ne dessiner que ceux visibles)
+            for enemy in self.enemy_spawner.enemies:
+                enemy_screen_x, enemy_screen_y = self._world_to_screen(
+                    enemy.rect.centerx, enemy.rect.centery
+                )
+                if (-100 < enemy_screen_x < self.width + 100 and 
+                    -100 < enemy_screen_y < self.height + 100):
+                    enemy_rect = enemy.rect.copy()
+                    enemy_rect.center = (enemy_screen_x, enemy_screen_y)
+                    old_enemy_rect = enemy.rect
+                    enemy.rect = enemy_rect
+                    enemy.draw(self.screen)
+                    enemy.rect = old_enemy_rect
+            
+            # Projectiles
+            for projectile in self.player.projectiles:
+                if projectile.active:
+                    proj_screen_x, proj_screen_y = self._world_to_screen(
+                        projectile.rect.centerx, projectile.rect.centery
+                    )
+                    if (-100 < proj_screen_x < self.width + 100 and 
+                        -100 < proj_screen_y < self.height + 100):
+                        proj_rect = projectile.rect.copy()
+                        proj_rect.center = (proj_screen_x, proj_screen_y)
+                        old_proj_rect = projectile.rect
+                        projectile.rect = proj_rect
+                        projectile.draw(self.screen)
+                        projectile.rect = old_proj_rect
             
             # Rendu des orbes d'XP
             for orb in self.xp_orbs:
-                orb.draw(self.screen)
+                orb_screen_x, orb_screen_y = self._world_to_screen(orb.x, orb.y)
+                if (-100 < orb_screen_x < self.width + 100 and 
+                    -100 < orb_screen_y < self.height + 100):
+                    old_orb_x, old_orb_y = orb.x, orb.y
+                    orb.x, orb.y = orb_screen_x, orb_screen_y
+                    orb.rect.center = (orb_screen_x, orb_screen_y)
+                    orb.draw(self.screen)
+                    orb.x, orb.y = old_orb_x, old_orb_y
             
-            # Effets visuels
-            self.effects.draw(self.screen)
+            # ✅ Effets visuels avec offset de caméra
+            self.effects.draw(self.screen, (self.camera_x, self.camera_y))
             
-            # Interface utilisateur
+            # Interface utilisateur (toujours en haut)
             self.ui.draw_hud(self.screen, self.player, self.xp_system)
             
             if self.paused:

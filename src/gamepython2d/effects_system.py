@@ -204,8 +204,13 @@ class EffectsSystem:
             'max_duration': 0.15
         })
     
-    def draw(self, screen: pygame.Surface):
-        """Dessine tous les effets."""
+    def draw(self, screen: pygame.Surface, camera_offset: Tuple[float, float] = (0, 0)):
+        """Dessine tous les effets.
+        
+        Args:
+            screen: Surface sur laquelle dessiner
+            camera_offset: Offset de la caméra (camera_x, camera_y) pour convertir coordonnées monde -> écran
+        """
         # Appliquer les tremblements d'écran
         shake_offset_x = 0
         shake_offset_y = 0
@@ -225,7 +230,7 @@ class EffectsSystem:
         
         # Dessiner les particules
         for particle in self.particles:
-            self._draw_particle(screen, particle, (shake_offset_x, shake_offset_y))
+            self._draw_particle(screen, particle, (shake_offset_x, shake_offset_y), camera_offset)
         
         # Appliquer les effets de flash
         for flash in self.flash_effects:
@@ -238,14 +243,22 @@ class EffectsSystem:
                 flash_surface.fill(flash['color'])
                 screen.blit(flash_surface, (0, 0))
     
-    def _draw_particle(self, screen: pygame.Surface, particle: Particle, shake_offset: Tuple[float, float]):
-        """Dessine une particule individuelle."""
+    def _draw_particle(self, screen: pygame.Surface, particle: Particle, shake_offset: Tuple[float, float], camera_offset: Tuple[float, float] = (0, 0)):
+        """Dessine une particule individuelle.
+        
+        Args:
+            screen: Surface sur laquelle dessiner
+            particle: Particule à dessiner
+            shake_offset: Offset du tremblement d'écran
+            camera_offset: Offset de la caméra (camera_x, camera_y)
+        """
         if particle.alpha <= 0:
             return
         
-        # Position avec shake
-        x = int(particle.x + shake_offset[0])
-        y = int(particle.y + shake_offset[1])
+        # ✅ Position monde -> écran avec caméra + shake
+        screen_width, screen_height = screen.get_size()
+        x = int(particle.x - camera_offset[0] + screen_width // 2 + shake_offset[0])
+        y = int(particle.y - camera_offset[1] + screen_height // 2 + shake_offset[1])
         
         # Créer une surface pour la particule avec alpha
         size = max(1, int(particle.size))
