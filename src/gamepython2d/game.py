@@ -13,7 +13,7 @@ from .audio_system import AudioSystem
 class Game:
     """Classe principale du jeu gérant la boucle de jeu et tous les systèmes."""
     
-    def __init__(self, width: int = 1200, height: int = 800):
+    def __init__(self, width: int = 800, height: int = 600):
         pygame.init()
         
         # Configuration de l'écran
@@ -27,7 +27,7 @@ class Game:
         self.fps = 60
         
         # ✅ NOUVEAU : Système de caméra
-        self.world_size = 5000  # Monde de 5000x5000 pixels
+        self.world_size = max(width, height)  # Monde = taille de l'écran
         self.camera_x = 0
         self.camera_y = 0
         self.tile_size = 100  # Taille des tuiles du fond

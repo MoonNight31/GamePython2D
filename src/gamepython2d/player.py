@@ -300,7 +300,7 @@ class Player:
             self.health += health_bonus
     
     def draw(self, screen):
-        """Dessine le joueur et ses projectiles."""
+        """Dessine le joueur (les projectiles sont dessinés séparément avec la caméra)."""
         # Appliquer un effet de flash rouge si endommagé
         if self.damage_flash_time > 0:
             # Créer une copie de l'image avec teinte rouge
@@ -310,7 +310,3 @@ class Player:
         else:
             # Dessiner l'image normale du vaisseau
             screen.blit(self.image, self.rect)
-        
-        # Projectiles
-        for projectile in self.projectiles:
-            projectile.draw(screen)

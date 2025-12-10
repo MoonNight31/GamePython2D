@@ -189,9 +189,12 @@ class CardDraft:
                     self.is_drafting = False
                     break
     
-    def _get_card_rect(self, card_index: int) -> pygame.Rect:
+    def _get_card_rect(self, card_index: int, screen=None) -> pygame.Rect:
         """Calcule la position d'une carte dans l'interface."""
-        screen_width = 1200
+        if screen:
+            screen_width = screen.get_width()
+        else:
+            screen_width = 800  # Valeur par défaut
         total_width = 3 * self.card_width + 2 * self.card_spacing
         start_x = (screen_width - total_width) // 2
         
@@ -208,14 +211,16 @@ class CardDraft:
         self._ensure_fonts_initialized()
         
         # Fond semi-transparent
-        overlay = pygame.Surface((1200, 800))
+        screen_width = screen.get_width()
+        screen_height = screen.get_height()
+        overlay = pygame.Surface((screen_width, screen_height))
         overlay.set_alpha(180)
         overlay.fill((0, 0, 0))
         screen.blit(overlay, (0, 0))
         
         # Titre
         title_text = self.font_large.render("Choisissez une amélioration", True, (255, 255, 255))
-        title_rect = title_text.get_rect(center=(600, 100))
+        title_rect = title_text.get_rect(center=(screen_width // 2, 100))
         screen.blit(title_text, title_rect)
         
         # Dessiner les cartes
@@ -224,14 +229,14 @@ class CardDraft:
         
         # Instructions
         instruction_text = self.font_small.render("Cliquez sur une carte pour la sélectionner", True, (200, 200, 200))
-        instruction_rect = instruction_text.get_rect(center=(600, 650))
+        instruction_rect = instruction_text.get_rect(center=(screen_width // 2, screen_height - 150))
         screen.blit(instruction_text, instruction_rect)
     
     def _draw_card(self, screen, card: Card, index: int):
         """Dessine une carte individuelle."""
         self._ensure_fonts_initialized()
         
-        card_rect = self._get_card_rect(index)
+        card_rect = self._get_card_rect(index, screen)
         
         # Effet de survol
         mouse_pos = pygame.mouse.get_pos()
