@@ -1,6 +1,7 @@
 import pygame
 import sys
 import random
+import numpy as np
 from typing import List, Optional
 from .player import Player
 from .enemy import EnemySpawner, XPOrb
@@ -40,6 +41,7 @@ class Game:
         # Configuration du menu
         self.menu_font_title = pygame.font.Font(None, 80)
         self.menu_font_button = pygame.font.Font(None, 50)
+        self.difficulty_font = pygame.font.Font(None, 24)
         self.menu_buttons = [
             {"text": "Jouer", "rect": pygame.Rect(width // 2 - 150, height // 2 - 50, 300, 70), "action": "play"},
             {"text": "Quitter", "rect": pygame.Rect(width // 2 - 150, height // 2 + 50, 300, 70), "action": "quit"}
@@ -60,6 +62,10 @@ class Game:
         # Systèmes d'effets et audio
         self.effects = EffectsSystem()
         self.audio = AudioSystem()
+        
+        # 🧠 NOUVEAU: Système d'Apprentissage DQN pour les ennemis
+        from .enemy_dqn_ai import DQNLearningSystem
+        self.enemy_learning = DQNLearningSystem()
         
         # Timer pour le spawning des ennemis
         self.spawn_timer = 0
@@ -189,14 +195,25 @@ class Game:
         
         # Spawning des ennemis
         self.spawn_timer += dt
-        if self.spawn_timer >= self.spawn_interval:
-            self.enemy_spawner.spawn_enemy(self.player.rect.center)
-            self.spawn_timer = 0
-            # Augmente la difficulté progressivement
-            self.spawn_interval = max(500, self.spawn_interval - 10)
         
-        # Mise à jour des ennemis
-        self.enemy_spawner.update(dt, self.player.rect.center)
+        if self.spawn_timer >= self.spawn_interval:
+            new_enemy = self.enemy_spawner.spawn_enemy(self.player.rect.center)
+            
+            # 🧠 Donner un cerveau d'apprentissage à l'ennemi
+            new_enemy.brain = self.enemy_learning.create_enemy_brain()
+            
+            self.spawn_timer = 0
+        
+        # 🧠 DQN: Entraînement périodique du réseau
+        self.enemy_learning.step_update()
+        
+        # Mise à jour des ennemis (avec info pour l'apprentissage)
+        player_velocity = pygame.Vector2(0, 0)
+        if hasattr(self.player, 'velocity'):
+            player_velocity = self.player.velocity
+        player_health_ratio = self.player.health / self.player.max_health
+        
+        self.enemy_spawner.update(dt, self.player.rect.center, player_velocity, player_health_ratio)
         
         # Mise à jour et collecte des orbes d'XP
         player_pos = (self.player.rect.centerx, self.player.rect.centery)
@@ -242,7 +259,53 @@ class Game:
         
         # Vérification de la mort du joueur
         if self.player.health <= 0:
+            # 🧠 RÉCOMPENSE MASSIVE: Le joueur est mort !
+            # Tous les ennemis proches (< 300px) obtiennent une grosse récompense
+            self._reward_enemies_for_kill()
             self.game_state = "game_over"
+    
+    def _reward_enemies_for_kill(self):
+        """
+        Récompense tous les ennemis qui ont participé à tuer le joueur.
+        Les ennemis proches reçoivent une énorme récompense pour apprendre la stratégie gagnante.
+        """
+        player_pos = (self.player.rect.centerx, self.player.rect.centery)
+        
+        for enemy in self.enemy_spawner.enemies:
+            if enemy.brain is None:
+                continue
+            
+            # Calculer la distance à la mort du joueur
+            dx = enemy.rect.centerx - player_pos[0]
+            dy = enemy.rect.centery - player_pos[1]
+            distance = (dx*dx + dy*dy) ** 0.5
+            
+            # Récompense graduée selon la distance
+            if distance < 150:
+                # Très proche : récompense maximale
+                kill_reward = 100.0
+            elif distance < 300:
+                # Proche : grosse récompense
+                kill_reward = 50.0
+            elif distance < 500:
+                # À distance : récompense moyenne
+                kill_reward = 25.0
+            else:
+                # Loin : petite récompense
+                kill_reward = 10.0
+            
+            # Stocker l'expérience de victoire
+            if enemy.brain.current_state is not None:
+                terminal_state = np.zeros(enemy.brain.STATE_SIZE, dtype=np.float32)
+                enemy.brain.store_experience(
+                    enemy.brain.current_state,
+                    enemy.brain.current_action if enemy.brain.current_action is not None else 0,
+                    kill_reward,
+                    terminal_state,
+                    done=True
+                )
+                
+                print(f"🎯 Ennemi à {distance:.0f}px récompensé: +{kill_reward:.0f} (KILL!)")
     
     def _handle_collisions(self):
         """Gère toutes les collisions du jeu."""
@@ -250,11 +313,27 @@ class Game:
         for enemy in self.enemy_spawner.enemies:
             if self.player.rect.colliderect(enemy.rect):
                 self.player.take_damage(enemy.damage)
-                enemy.health = 0  # L'ennemi meurt après attaque
                 
-                # Effet visuel de mort d'ennemi
-                self.effects.create_enemy_death_effect(enemy.rect.centerx, enemy.rect.centery)
-                self.audio.play_combat_sound('enemy_death')
+                # 🧠 Apprentissage: L'ennemi a touché le joueur !
+                enemy.hit_player_this_frame = True
+                if enemy.brain:
+                    enemy.brain.damage_dealt += enemy.damage
+                
+                # L'ennemi est repoussé après attaque (au lieu de mourir)
+                # Calculer la direction de repousse (opposé au joueur)
+                direction = pygame.Vector2(
+                    enemy.rect.centerx - self.player.rect.centerx,
+                    enemy.rect.centery - self.player.rect.centery
+                )
+                if direction.length() > 0:
+                    direction = direction.normalize()
+                    # Repousser l'ennemi
+                    knockback_distance = 60
+                    enemy.rect.centerx += direction.x * knockback_distance
+                    enemy.rect.centery += direction.y * knockback_distance
+                
+                # Effet sonore d'attaque réussie
+                self.audio.play_combat_sound('projectile_impact')
         
         # Collision attaques joueur-ennemis
         for projectile in self.player.projectiles:
@@ -269,6 +348,10 @@ class Game:
                     
                     # Si l'ennemi meurt, créer un orbe d'XP
                     if enemy.health <= 0:
+                        # 🧠 Notifier le système d'apprentissage de la mort
+                        if enemy.brain:
+                            self.enemy_learning.enemy_died(enemy.brain, killed_by_player=True)
+                        
                         # Effet de mort d'ennemi
                         self.effects.create_enemy_death_effect(enemy.rect.centerx, enemy.rect.centery)
                         self.audio.play_combat_sound('enemy_death')
@@ -317,6 +400,64 @@ class Game:
         for x in range(-offset_x, self.width + self.tile_size, self.tile_size):
             for y in range(-offset_y, self.height + self.tile_size, self.tile_size):
                 pygame.draw.circle(self.screen, (40, 40, 50), (x, y), 2)
+    
+    def _draw_difficulty_display(self):
+        """Affiche les statistiques d'apprentissage DQN."""
+        # 🧠 Statistiques d'apprentissage DQN
+        learning_stats = self.enemy_learning.get_learning_stats()
+        
+        # Position en bas à droite
+        x_pos = self.width - 250
+        y_pos = self.height - 110
+        
+        # Fond semi-transparent
+        overlay = pygame.Surface((240, 100))
+        overlay.set_alpha(180)
+        overlay.fill((20, 20, 30))
+        self.screen.blit(overlay, (x_pos, y_pos))
+        
+        # Titre Apprentissage DQN
+        learning_title = self.difficulty_font.render("🧠 DQN Learning", True, (150, 200, 255))
+        self.screen.blit(learning_title, (x_pos + 10, y_pos + 8))
+        
+        # Device indicator (GPU/CPU)
+        device_color = (100, 255, 100) if learning_stats['device'] == 'cuda' else (180, 180, 200)
+        device_text = self.difficulty_font.render(
+            learning_stats['device'].upper(), 
+            True, device_color
+        )
+        self.screen.blit(device_text, (x_pos + 180, y_pos + 8))
+        
+        # Épisodes
+        episodes_text = self.difficulty_font.render(
+            f"Épisodes: {learning_stats['total_episodes']}", 
+            True, (180, 180, 200)
+        )
+        self.screen.blit(episodes_text, (x_pos + 10, y_pos + 35))
+        
+        # Buffer size
+        buffer_text = self.difficulty_font.render(
+            f"Mémoire: {learning_stats['buffer_size']}", 
+            True, (180, 180, 200)
+        )
+        self.screen.blit(buffer_text, (x_pos + 10, y_pos + 60))
+        
+        # Exploration (epsilon)
+        epsilon_pct = int(learning_stats['current_epsilon'] * 100)
+        epsilon_text = self.difficulty_font.render(
+            f"ε: {epsilon_pct}%", 
+            True, (180, 180, 200)
+        )
+        self.screen.blit(epsilon_text, (x_pos + 160, y_pos + 60))
+        
+        # Récompense moyenne (si disponible)
+        if learning_stats['avg_reward'] != 0:
+            reward_color = (100, 255, 100) if learning_stats['avg_reward'] > 0 else (255, 100, 100)
+            reward_text = self.difficulty_font.render(
+                f"Reward: {learning_stats['avg_reward']:.1f}", 
+                True, reward_color
+            )
+            self.screen.blit(reward_text, (x_pos + 10, y_pos + 80))
     
     def render(self):
         """Effectue le rendu de tous les éléments."""
@@ -388,6 +529,9 @@ class Game:
             
             # Interface utilisateur (toujours en haut)
             self.ui.draw_hud(self.screen, self.player, self.xp_system)
+            
+            # 🤖 Affichage de la difficulté de l'IA Adaptative
+            self._draw_difficulty_display()
             
             if self.paused:
                 self.ui.draw_pause_screen(self.screen)

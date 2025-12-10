@@ -2,9 +2,12 @@ import pygame
 import random
 import math
 import os
+import numpy as np
 from typing import List, Tuple
 from dataclasses import dataclass
 from PIL import Image
+
+from .enemy_dqn_ai import DQNEnemyBrain
 
 class XPOrb:
     """Orbe d'expérience qui doit être collecté par le joueur."""
@@ -176,6 +179,15 @@ class Enemy:
         self.health = self.max_health
         self.velocity = pygame.Vector2(0, 0)
         
+        # Intelligence de l'IA (peut être modifié par l'adaptive AI)
+        self.ai_intelligence = 1.0
+        
+        # 🧠 NOUVEAU: Cerveau d'apprentissage
+        self.brain = None  # Sera initialisé par le système global
+        self.last_distance = 0
+        self.got_hit_this_frame = False
+        self.hit_player_this_frame = False
+        
         # État d'animation
         self.damage_flash_time = 0
         self.original_color = self.color
@@ -226,7 +238,7 @@ class Enemy:
             cls._alien_frames = []
             cls._frames_loaded = True
     
-    def update(self, dt: float, player_pos: Tuple[int, int]):
+    def update(self, dt: float, player_pos: Tuple[int, int], player_velocity: pygame.Vector2 = None, player_health_ratio: float = 1.0):
         """Met à jour l'ennemi (IA, mouvement, etc.)."""
         # Mise à jour de l'animation
         self.animation_timer += dt
@@ -235,23 +247,127 @@ class Enemy:
             if Enemy._alien_frames and len(Enemy._alien_frames) > 0:
                 self.current_frame = (self.current_frame + 1) % len(Enemy._alien_frames)
         
-        # IA simple : se diriger vers le joueur
+        # Si pas de velocity fournie, créer un vecteur nul
+        if player_velocity is None:
+            player_velocity = pygame.Vector2(0, 0)
+        
+        # Calculer la distance
         direction = pygame.Vector2(
             player_pos[0] - self.rect.centerx,
             player_pos[1] - self.rect.centery
         )
+        distance = direction.length() if direction.length() > 0 else 0
         
-        if direction.length() > 0:
-            direction = direction.normalize()
-            self.velocity = direction * self.speed
+        # 🧠 SYSTÈME D'APPRENTISSAGE DQN : Si le cerveau est activé
+        if self.brain is not None:
+            # Calculer la santé de l'ennemi
+            enemy_health_ratio = self.health / self.max_health if self.max_health > 0 else 0.0
             
-            # Application du mouvement avec position flottante
-            self.x_float += self.velocity.x * dt / 1000
-            self.y_float += self.velocity.y * dt / 1000
+            # Obtenir l'état actuel (encodé en vecteur)
+            current_state = self.brain.encode_state(
+                (self.rect.centerx, self.rect.centery),
+                player_pos,
+                player_velocity,
+                distance,
+                player_health_ratio,
+                enemy_health_ratio
+            )
             
-            # Mise à jour du rect avec les positions entières
-            self.rect.x = int(self.x_float)
-            self.rect.y = int(self.y_float)
+            # Si c'est la première frame, juste sauvegarder l'état
+            if self.brain.current_state is None:
+                self.brain.current_state = current_state
+                self.brain.current_action = self.brain.choose_action(current_state)
+            else:
+                # Calculer la récompense pour l'action précédente
+                distance_decreased = distance < self.last_distance
+                reward = self.brain.calculate_reward(
+                    dt,
+                    hit_player=self.hit_player_this_frame,
+                    got_hit=self.got_hit_this_frame,
+                    distance=distance,
+                    distance_decreased=distance_decreased
+                )
+                
+                # Stocker l'expérience dans le replay buffer
+                self.brain.store_experience(
+                    self.brain.current_state,
+                    self.brain.current_action,
+                    reward,
+                    current_state,
+                    done=False
+                )
+                
+                # Choisir la prochaine action
+                self.brain.current_state = current_state
+                self.brain.current_action = self.brain.choose_action(current_state)
+            
+            # Exécuter l'action choisie
+            self.velocity = self.brain.execute_action(
+                self.brain.current_action,
+                (self.rect.centerx, self.rect.centery),
+                player_pos,
+                self.speed,
+                dt
+            )
+            
+            # Mettre à jour les stats du cerveau
+            self.brain.lifetime += dt
+            if distance < 200:
+                self.brain.time_near_player += dt
+            
+            # Reset des flags
+            self.got_hit_this_frame = False
+            self.hit_player_this_frame = False
+            
+        else:
+            # IA adaptative standard (comportement basé sur l'intelligence)
+            if direction.length() > 0:
+                direction = direction.normalize()
+                
+                # Intelligence > 1.5: esquive latérale et approche tactique
+                if self.ai_intelligence > 1.5:
+                    import math
+                    # Mouvement sinusoïdal pour esquiver
+                    time_factor = pygame.time.get_ticks() / 1000.0
+                    perpendicular = pygame.Vector2(-direction.y, direction.x)
+                    lateral_movement = perpendicular * math.sin(time_factor * 3) * 0.3
+                    
+                    # Si proche, reculer légèrement (kite strategy)
+                    if distance < 150:
+                        direction *= 0.5
+                    
+                    direction += lateral_movement
+                    direction = direction.normalize()
+                
+                # Intelligence > 1.2: anticipation de la position du joueur
+                elif self.ai_intelligence > 1.2:
+                    # Prédire où sera le joueur (simple lead)
+                    lead_factor = min(distance / 300.0, 1.0) * 0.3
+                    direction = direction.normalize()
+                    # Ajout d'une composante de prédiction simple
+                    if hasattr(self, '_last_player_pos'):
+                        player_velocity_calc = pygame.Vector2(
+                            player_pos[0] - self._last_player_pos[0],
+                            player_pos[1] - self._last_player_pos[1]
+                        )
+                        if player_velocity_calc.length() > 0:
+                            direction += player_velocity_calc.normalize() * lead_factor
+                            direction = direction.normalize()
+                    self._last_player_pos = player_pos
+                
+                # Intelligence normale: comportement basique
+                self.velocity = direction * self.speed
+        
+        # Application du mouvement avec position flottante
+        self.x_float += self.velocity.x * dt / 1000
+        self.y_float += self.velocity.y * dt / 1000
+        
+        # Mise à jour du rect avec les positions entières
+        self.rect.x = int(self.x_float)
+        self.rect.y = int(self.y_float)
+        
+        # Sauvegarder la distance pour le prochain calcul
+        self.last_distance = distance
         
         # Réduction du flash de dégâts
         if self.damage_flash_time > 0:
@@ -261,6 +377,11 @@ class Enemy:
         """L'ennemi subit des dégâts."""
         self.health -= damage
         self.damage_flash_time = 150  # Flash blanc pendant 150ms
+        
+        # 🧠 Marquer pour l'apprentissage
+        self.got_hit_this_frame = True
+        if self.brain:
+            self.brain.damage_received += damage
         
         if self.health < 0:
             self.health = 0
@@ -390,14 +511,17 @@ class EnemySpawner:
         
         # Créer et ajouter l'ennemi (avec ou sans images)
         enemy = Enemy(x, y, enemy_type, use_images=self.use_images)
+        
         self.enemies.append(enemy)
         self.total_spawned += 1
+        
+        return enemy  # Retourner l'ennemi créé
     
-    def update(self, dt: float, player_pos: Tuple[int, int]):
+    def update(self, dt: float, player_pos: Tuple[int, int], player_velocity: pygame.Vector2 = None, player_health_ratio: float = 1.0):
         """Met à jour tous les ennemis."""
         # Mise à jour de chaque ennemi
         for enemy in self.enemies:
-            enemy.update(dt, player_pos)
+            enemy.update(dt, player_pos, player_velocity, player_health_ratio)
         
         # Suppression des ennemis morts
         initial_count = len(self.enemies)

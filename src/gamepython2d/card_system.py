@@ -142,18 +142,18 @@ class CardDraft:
         self.font_medium = None
         self.font_small = None
         
-        # Positions des cartes
-        self.card_width = 300
-        self.card_height = 400
-        self.card_spacing = 50
+        # Positions des cartes (adaptées pour écran 800x600)
+        self.card_width = 200
+        self.card_height = 280
+        self.card_spacing = 30
     
     def _ensure_fonts_initialized(self):
         """S'assure que les fonts sont initialisées."""
         if self.font_large is None:
             pygame.font.init()
-            self.font_large = pygame.font.Font(None, 36)
-            self.font_medium = pygame.font.Font(None, 24)
-            self.font_small = pygame.font.Font(None, 18)
+            self.font_large = pygame.font.Font(None, 32)  # Réduit de 36 à 32
+            self.font_medium = pygame.font.Font(None, 20)  # Réduit de 24 à 20
+            self.font_small = pygame.font.Font(None, 16)  # Réduit de 18 à 16
         
     def start_draft(self, level: int = 1):
         """Démarre une session de draft avec 3 cartes."""
@@ -199,7 +199,7 @@ class CardDraft:
         start_x = (screen_width - total_width) // 2
         
         x = start_x + card_index * (self.card_width + self.card_spacing)
-        y = 200
+        y = 150  # Position verticale ajustée pour écran 600px de hauteur
         
         return pygame.Rect(x, y, self.card_width, self.card_height)
     
@@ -248,7 +248,7 @@ class CardDraft:
         pygame.draw.rect(screen, (40, 40, 50), card_rect.inflate(-6, -6))
         
         # En-tête avec rareté
-        header_rect = pygame.Rect(card_rect.x + 10, card_rect.y + 10, card_rect.width - 20, 40)
+        header_rect = pygame.Rect(card_rect.x + 8, card_rect.y + 8, card_rect.width - 16, 35)
         pygame.draw.rect(screen, card.color, header_rect)
         
         # Nom de la carte
@@ -258,13 +258,13 @@ class CardDraft:
         
         # Rareté
         rarity_text = self.font_small.render(card.rarity.upper(), True, (200, 200, 200))
-        rarity_rect = rarity_text.get_rect(center=(card_rect.centerx, card_rect.y + 70))
+        rarity_rect = rarity_text.get_rect(center=(card_rect.centerx, card_rect.y + 55))
         screen.blit(rarity_text, rarity_rect)
         
         # Description
         self._draw_wrapped_text(screen, card.description, 
-                               card_rect.x + 15, card_rect.y + 100,
-                               card_rect.width - 30, self.font_small, (255, 255, 255))
+                               card_rect.x + 12, card_rect.y + 75,
+                               card_rect.width - 24, self.font_small, (255, 255, 255))
         
         # Effet
         effect_text = f"Effet: +{card.value}"
@@ -276,7 +276,7 @@ class CardDraft:
             effect_text = f"Vie max: +{int(card.value)} PV"
         
         effect_surface = self.font_medium.render(effect_text, True, (100, 255, 100))
-        effect_rect = effect_surface.get_rect(center=(card_rect.centerx, card_rect.y + 350))
+        effect_rect = effect_surface.get_rect(center=(card_rect.centerx, card_rect.y + 245))  # Ajusté pour carte 280px
         screen.blit(effect_surface, effect_rect)
     
     def _draw_wrapped_text(self, screen, text: str, x: int, y: int, max_width: int, 
